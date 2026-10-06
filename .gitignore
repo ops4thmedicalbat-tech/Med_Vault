@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build Outputs
+build/
+dist/
+.next/
+out/
+coverage/
+server-build/
+*.tsbuildinfo
+
+# Environment & Secrets (ห้ามนำขึ้น Git เด็ดขาด)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# Firebase Local Cache & Logs
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Firebase Admin & Service Accounts
+serviceAccountKey*.json
+firebase-adminsdk-*.json
+
+# Credentials & Private Keys
+*.pem
+*.key
+*.p12
+*.crt
+*.cert
+credentials.json
+client_secret*.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS & Temporary Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# IDEs & Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Local Scratch / Temporary
+scratch/
+MV/
+.agents/
+skills-lock.json

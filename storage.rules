@@ -1,0 +1,37 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.uid == "KHkABkJ7mLOWMqHvxwP5VDnmqdZ2"
+        || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+    }
+
+    // รูปโปรไฟล์: ชื่อไฟล์ต้องขึ้นต้นด้วย uid ของผู้อัปโหลด, รูปภาพ ≤ 5MB
+    match /avatars/{fileName} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && fileName.matches(request.auth.uid + "_.*")
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches("image/.*");
+      allow delete: if request.auth != null
+        && (fileName.matches(request.auth.uid + "_.*") || isAdmin());
+    }
+
+    // เอกสารประจำหน่วย: ผู้ใช้ที่ล็อกอินอ่านได้, แอดมินเท่านั้นที่อัปโหลด/ลบ (≤ 50MB)
+    match /documents/{fileName} {
+      allow read: if request.auth != null;
+      allow create, update: if isAdmin()
+        && request.resource.size < 50 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+
+    // ที่อื่นทั้งหมด: ปฏิเสธ
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

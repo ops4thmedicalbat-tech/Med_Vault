@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "users": {
+      "title": "users",
+      "description": "Military personnel user accounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "militaryId": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "rank": { "type": "string" },
+        "unit": { "type": "string" },
+        "position": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "registeredAt": { "type": "string" }
+      },
+      "required": ["militaryId", "firstName", "lastName", "rank", "role"]
+    },
+    "quizResults": {
+      "title": "quizResults",
+      "description": "Quiz assessment scores and details for courses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "militaryId": { "type": "string" },
+        "userRank": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseTitle": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "percentage": { "type": "number" },
+        "passed": { "type": "boolean" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["userId", "courseId", "score", "percentage", "passed"]
+    },
+    "certificates": {
+      "title": "certificates",
+      "description": "Issued certificates for completing courses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "militaryId": { "type": "string" },
+        "userRank": { "type": "string" },
+        "unit": { "type": "string" },
+        "courseTitle": { "type": "string" },
+        "scorePercentage": { "type": "number" },
+        "issueDate": { "type": "string" },
+        "qrCodeData": { "type": "string" },
+        "commanderName": { "type": "string" },
+        "commanderRank": { "type": "string" }
+      },
+      "required": ["userId", "courseTitle", "scorePercentage", "issueDate"]
+    },
+    "auditLogs": {
+      "title": "auditLogs",
+      "description": "System usage and audit activity logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "militaryId": { "type": "string" },
+        "userRank": { "type": "string" },
+        "unit": { "type": "string" },
+        "module": { "type": "string" },
+        "actionType": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["timestamp", "module", "details"]
+    },
+    "chatMessages": {
+      "title": "chatMessages",
+      "description": "Messages sent between users and unit admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRank": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "isFromAdmin": { "type": "boolean" }
+      },
+      "required": ["senderId", "receiverId", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "Collection of military personnel profiles"
+    },
+    "/quizResults/{resultId}": {
+      "schema": "quizResults",
+      "description": "Collection of quiz exam results"
+    },
+    "/certificates/{certId}": {
+      "schema": "certificates",
+      "description": "Collection of issued military course certificates"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "auditLogs",
+      "description": "Security and activity trail logs"
+    },
+    "/chatMessages/{messageId}": {
+      "schema": "chatMessages",
+      "description": "Real-time communication between personnel and battalion operations"
+    }
+  }
+}

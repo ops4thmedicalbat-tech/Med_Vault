@@ -1,0 +1,6 @@
+{
+  "name": "MedVault – คลังความรู้ทางการแพทย์",
+  "description": "ระบบคลังความรู้ทางการแพทย์และทดสอบกำลังพล กองพันเสนารักษ์ที่ 4 ค่ายสมเด็จพระนเรศวรมหาราช",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
