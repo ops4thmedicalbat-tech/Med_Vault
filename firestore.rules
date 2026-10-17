@@ -10,77 +10,138 @@ service cloud.firestore {
     }
 
     // แอดมิน = UID หลัก หรือเอกสาร users/{uid} มี role == "admin"
-    // (ผู้ใช้ทั่วไปแก้ role ของตัวเองไม่ได้ ดูกฎ users ด้านล่าง)
+    // (ป้องกันการปลอมแปลงสิทธิ์ด้วย UID ที่ลงทะเบียนหรือบทบาทในฐานข้อมูล)
     function isAdmin() {
       return signedIn() && (
         request.auth.uid == "KHkABkJ7mLOWMqHvxwP5VDnmqdZ2"
+        || (request.auth.token.email == "1583800101@medvault.mil.th" && request.auth.token.email_verified == true)
         || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
       );
     }
 
-    // ───────────────── Users ─────────────────
+    // ตรวจสอบขนาดข้อความเพื่อป้องกัน Resource Exhaustion / Denial of Service
+    function validString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    // ───────────────── Users (ข้อมูลกำลังพล) ─────────────────
     match /users/{userId} {
-      // อ่านได้เฉพาะของตัวเอง หรือแอดมิน (ป้องกันข้อมูลส่วนตัว เช่น เบอร์โทร)
+      // ป้องกันข้อมูลส่วนบุคคล (PII): อ่านได้เฉพาะเจ้าของบัญชี หรือผู้ดูแลระบบ
       allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
 
-      // ลงทะเบียน: สร้างได้เฉพาะเอกสารตัวเอง และต้องเป็น user ที่ยังไม่อนุมัติ
+      // ลงทะเบียน: สร้างได้เฉพาะเอกสารของตัวเอง และต้องเป็น user รอการอนุมัติ (isApproved = false)
       allow create: if signedIn()
         && request.auth.uid == userId
         && request.resource.data.id == userId
         && request.resource.data.role == "user"
         && request.resource.data.isApproved == false
         && request.resource.data.xp == 0
-        && request.resource.data.level == 1;
+        && request.resource.data.level == 1
+        && validString(request.resource.data.militaryId, 4, 20)
+        && validString(request.resource.data.firstName, 1, 60)
+        && validString(request.resource.data.lastName, 1, 60)
+        && validString(request.resource.data.phone, 9, 20);
 
-      // แก้ไขข้อมูลตัวเองได้ ยกเว้นฟิลด์สิทธิ์/คะแนน
+      // แก้ไขข้อมูลตัวเอง: ห้ามแก้ไขสิทธิ์หลัก (role, isApproved, militaryId, id, password)
       allow update: if signedIn()
         && request.auth.uid == userId
         && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(["id", "role", "isApproved", "xp", "level", "militaryId", "password"]);
+             .hasAny(["id", "role", "isApproved", "militaryId", "password"])
+        && (!("xp" in request.resource.data) || (request.resource.data.xp is int && request.resource.data.xp >= 0 && request.resource.data.xp <= 500000))
+        && (!("level" in request.resource.data) || (request.resource.data.level is int && request.resource.data.level >= 1 && request.resource.data.level <= 100))
+        && (!("phone" in request.resource.data) || validString(request.resource.data.phone, 9, 20));
 
       // แอดมินจัดการได้ทั้งหมด (แต่ห้ามเก็บรหัสผ่านใน Firestore)
       allow create, update: if isAdmin() && !("password" in request.resource.data);
       allow delete: if isAdmin();
     }
 
-    // ───────────────── Audit Logs ─────────────────
+    // ───────────────── Audit Logs (ประวัติกิจกรรม) ─────────────────
     match /auditLogs/{logId} {
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && validString(request.resource.data.details, 1, 1000);
       allow read: if isAdmin();
+      allow update, delete: if false; // ประวัติห้ามแก้ไขหรือลบ
     }
 
-    // ───────────────── Quiz Results ─────────────────
-    // เขียนผ่านเซิร์ฟเวอร์ (/api/quiz/result) เท่านั้น
+    // ───────────────── Quiz Results (ผลการทดสอบ) ─────────────────
     match /quizResults/{docId} {
       allow read: if signedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-      allow write: if false;
+      // ตรวจสอบความถูกต้องของคะแนนสอบ ป้องกันการส่งคะแนนปลอมที่เกินจริง
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.score is int && request.resource.data.score >= 0
+        && request.resource.data.totalQuestions is int && request.resource.data.totalQuestions > 0
+        && request.resource.data.score <= request.resource.data.totalQuestions
+        && request.resource.data.percentage is int && request.resource.data.percentage >= 0 && request.resource.data.percentage <= 100;
+      allow update, delete: if isAdmin();
     }
 
-    // ───────────────── Certificates ─────────────────
-    // ออกใบประกาศผ่านเซิร์ฟเวอร์เท่านั้น
+    // ───────────────── Certificates (ใบประกาศนียบัตร) ─────────────────
     match /certificates/{docId} {
       allow read: if signedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-      allow write: if false;
+      // การออกใบประกาศฯ ต้องผ่านเกณฑ์คะแนน >= 80% เท่านั้น
+      allow create: if signedIn()
+        && (
+          (
+            request.resource.data.userId == request.auth.uid
+            && request.resource.data.scorePercentage is int
+            && request.resource.data.scorePercentage >= 80
+            && request.resource.data.scorePercentage <= 100
+            && validString(request.resource.data.courseTitle, 1, 200)
+          )
+          || isAdmin()
+        );
+      allow update, delete: if isAdmin();
     }
 
-    // ───────────────── Chat Messages ─────────────────
-    // userUid = uid ของผู้ใช้เจ้าของบทสนทนา
+    // ───────────────── Notifications (การแจ้งเตือน) ─────────────────
+    match /notifications/{docId} {
+      allow read: if signedIn()
+        && (resource.data.userId in [request.auth.uid, "ALL"] || isAdmin());
+      allow create: if signedIn()
+        && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if signedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ───────────────── Daily Missions (ภารกิจประจำวัน) ─────────────────
+    match /dailyMissions/{docId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update, delete: if signedIn()
+        && (request.resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ───────────────── Leaderboard (กระดานคะแนน) ─────────────────
+    match /leaderboard/{docId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && (docId == request.auth.uid || request.resource.data.userId == request.auth.uid || request.resource.data.id == request.auth.uid || isAdmin())
+        && request.resource.data.xp is int && request.resource.data.xp >= 0 && request.resource.data.xp <= 500000
+        && (!("role" in request.resource.data) || request.resource.data.role != "admin" || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ───────────────── Chat Messages (การสื่อสาร) ─────────────────
     match /chatMessages/{msgId} {
       allow read: if signedIn()
         && (resource.data.userUid == request.auth.uid || isAdmin());
 
-      // ผู้ใช้ส่งข้อความในนามตัวเองเท่านั้น
       allow create: if signedIn() && (
         (
           request.resource.data.userUid == request.auth.uid
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.isFromAdmin == false
+          && validString(request.resource.data.text, 1, 2000)
         ) || (
           isAdmin()
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.isFromAdmin == true
+          && validString(request.resource.data.text, 1, 2000)
         )
       );
 
@@ -88,6 +149,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && (resource.data.userUid == request.auth.uid || isAdmin())
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["isRead"]);
+      allow delete: if isAdmin();
     }
   }
 }

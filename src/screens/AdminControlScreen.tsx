@@ -112,7 +112,14 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
   };
 
   // Build Personnel Roster Sorted Strictly By Rank Hierarchy
+  // กรองเฉพาะกำลังพลที่เป็นผู้รับการทดสอบ (ไม่นำรายชื่อและคะแนนของแอดมินหรือผู้บังคับบัญชามาขึ้นตารางคะแนน/ลำดับ)
   const personnelRankScores = users
+    .filter((u) => {
+      if (u.role === "admin") return false;
+      if (u.militaryId === "1583800101" || u.militaryId === "1583800106") return false;
+      if (u.firstName?.includes("สมชาย") && u.lastName?.includes("ใจภักดี")) return false;
+      return true;
+    })
     .map((u) => {
       const userResults = quizResults.filter(
         (r) => r.militaryId === u.militaryId || r.userId === u.id
@@ -125,10 +132,7 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
       let scoreText = "-";
       let remark = "รอการทดสอบ";
 
-      if (u.militaryId === "1583800101") {
-        scoreText = "10/10 คะแนน (100%)";
-        remark = "ผู้ดูแลระบบ (ฝยก.ฯ) / ผ่านเกณฑ์ 100%";
-      } else if (bestResult) {
+      if (bestResult) {
         scoreText = `${bestResult.score}/${bestResult.totalQuestions} คะแนน (${bestResult.percentage}%)`;
         if (bestResult.percentage === 100) {
           remark = "ผ่านเกณฑ์ดีเยี่ยม (100%)";
@@ -152,9 +156,7 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
           ? cResults.reduce((p, curr) => (curr.percentage > p.percentage ? curr : p))
           : null;
 
-        if (u.militaryId === "1583800101") {
-          courseScoresMap[c.id] = { scorePct: "100%", passed: true, isTested: true };
-        } else if (bestC) {
+        if (bestC) {
           courseScoresMap[c.id] = { scorePct: `${bestC.percentage}%`, passed: bestC.passed, isTested: true };
         } else {
           // Untested: LEAVE BLANK ("หากยังไม่ทดสอบให้เว้นว่างไว้")
@@ -174,7 +176,7 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
         position: u.position,
         postTestScoreText: scoreText,
         remark: remark,
-        passed: bestResult ? bestResult.passed : u.militaryId === "1583800101",
+        passed: bestResult ? bestResult.passed : false,
         courseScoresMap,
         testedCount,
         passedCount,
@@ -230,12 +232,18 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
     document.body.removeChild(link);
   };
 
-  const filteredScores = quizResults.filter(
-    (r) =>
-      r.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.militaryId.includes(searchTerm) ||
-      r.courseTitle.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredScores = quizResults
+    .filter((r) => {
+      if (r.militaryId === "1583800101" || r.militaryId === "1583800106") return false;
+      if (r.userName?.includes("สมชาย ใจภักดี")) return false;
+      return true;
+    })
+    .filter(
+      (r) =>
+        r.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.militaryId.includes(searchTerm) ||
+        r.courseTitle.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   // Audit Logs Filtered
   const filteredLogs = auditLogs.filter((log) => {
@@ -693,9 +701,7 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
                     filteredPersonnelRoster.map((item, idx) => (
                       <tr
                         key={item.user.id}
-                        className={`hover:bg-amber-50/50 transition-colors ${
-                          item.user.militaryId === "1583800101" ? "bg-amber-50/30" : ""
-                        }`}
+                        className="hover:bg-amber-50/50 transition-colors"
                       >
                         {/* ลำดับ */}
                         <td className="p-2 text-center font-bold text-stone-600 bg-stone-50 border-r border-stone-200">
@@ -799,9 +805,7 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
                     filteredPersonnelRoster.map((item, idx) => (
                       <tr
                         key={item.user.id}
-                        className={`hover:bg-amber-50/50 transition-colors ${
-                          item.user.militaryId === "1583800101" ? "bg-amber-50/30" : ""
-                        }`}
+                        className="hover:bg-amber-50/50 transition-colors"
                       >
                         <td className="p-3 text-center font-bold text-stone-600 bg-stone-50 border-r border-stone-200">
                           {idx + 1}
@@ -1144,16 +1148,6 @@ export const AdminControlScreen: React.FC<AdminControlScreenProps> = ({
             </form>
           </div>
         </div>
-      )}
-
-      {/* PRINTABLE REPORT MODAL */}
-      {selectedUserForReport && (
-        <Scorecard17ReportModal
-          user={selectedUserForReport}
-          courses={courses}
-          quizResults={quizResults}
-          onClose={() => setSelectedUserForReport(null)}
-        />
       )}
     </div>
   );

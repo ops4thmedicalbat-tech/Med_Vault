@@ -136,15 +136,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="bg-[#556B2F] text-amber-200 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-[#8F9E5B]">
-              คำสั่ง พัน.สร.๔ ที่ ๑๑ / ๒๕๖๙
+              คำสั่ง พัน.สร.๔ ที่ ๒๑๕ / ๒๕๖๙
             </span>
-            <span className="text-xs text-amber-300 font-bold">ผนวก ข : Unit School</span>
+            <span className="text-xs text-amber-300 font-bold">ผนวก ข : Unit School ปีงบประมาณ ๒๕๗๐</span>
           </div>
           <h2 className="text-base sm:text-lg font-black text-amber-100">
-            ตารางกำหนดการเรียนการสอน Unit School กองพันเสนารักษ์ที่ 4
+            ตารางกำหนดการเรียนการสอน Unit School ประจำปีงบประมาณ ๒๕๗๐ พัน.สร.๔
           </h2>
           <p className="text-xs text-stone-300">
-            วิชาการยุทธวิธี ปฐมพยาบาลสนาม และส่งกลับทางสายแพทย์ (จัดตามลำดับวันที่สั่งการ 14 ก.ค. 69 - 21 ส.ค. 69)
+            วิชาการยุทธวิธี การแพทย์สนาม และการส่งกลับทางสายแพทย์ 16 วิชา 32 ครั้ง (15 ต.ค. 69 - 10 ก.ย. 70)
           </p>
         </div>
         <button
@@ -173,7 +173,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               >
                 <Calendar className="w-5 h-5 text-amber-300 mb-1" />
                 <p className="text-xs font-bold text-amber-100">ตารางเรียน Unit School</p>
-                <p className="text-[10px] text-amber-200/80">ตารางประจำวัน 17 วิชา</p>
+                <p className="text-[10px] text-amber-200/80">ตารางประจำปีงบประมาณ 2570 (16 วิชา 32 ครั้ง)</p>
               </button>
 
               <button
@@ -181,7 +181,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 className="p-3 bg-emerald-800 hover:bg-emerald-900 text-amber-200 rounded-lg text-left transition-colors border border-emerald-600 shadow-xs"
               >
                 <Printer className="w-5 h-5 text-amber-300 mb-1" />
-                <p className="text-xs font-bold text-amber-100">รายงานผลสอบ 17 วิชา</p>
+                <p className="text-xs font-bold text-amber-100">รายงานผลสอบ Unit School</p>
                 <p className="text-[10px] text-amber-200/80">พิมพ์แบบ 1 หน้ากระดาษ</p>
               </button>
 

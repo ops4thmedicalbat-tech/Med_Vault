@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Shield, Lock, UserCheck, AlertCircle, KeyRound, UserPlus, Phone, MapPin, Facebook, LogIn } from "lucide-react";
 import { UNIT_INFO } from "../data/initialData";
 import { signInWithEmail, signInWithGoogle } from "../lib/firebaseAuth";
+import { ForgotPasswordModal } from "../components/ForgotPasswordModal";
 
 interface LoginScreenProps {
   // ข้อความแจ้งจาก App (เช่น บัญชีรออนุมัติ / ไม่พบข้อมูลผู้ใช้)
@@ -18,7 +19,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [militaryId, setMilitaryId] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   // เมื่อ App แจ้งผลการตรวจสอบบัญชี ให้หยุดสถานะโหลด และแสดงข้อความ
   useEffect(() => {
@@ -60,8 +63,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         setErrorMsg("พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่");
       } else if (error.code === "auth/network-request-failed") {
         setErrorMsg("ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้ กรุณาตรวจสอบเครือข่าย");
+      } else if (
+        error.code === "auth/firebase-app-check-token-is-invalid." ||
+        error.code === "auth/app-check-token-invalid" ||
+        String(error.message || "").toLowerCase().includes("app-check")
+      ) {
+        setErrorMsg(
+          "Firebase App Check บล็อกคำขอเข้าสู่ระบบ (Identity Toolkit Enforced): กรุณาเปลี่ยนสถานะเป็น Unenforce ใน Firebase Console หรือลงทะเบียน Debug Token"
+        );
       } else {
-        setErrorMsg("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง");
+        setErrorMsg("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง (" + (error.message || error.code || "") + ")");
       }
     }
   };
@@ -119,6 +130,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </p>
             </div>
 
+            {successMsg && (
+              <div className="bg-emerald-50 border-l-4 border-emerald-600 p-3.5 rounded-r-lg text-xs text-emerald-800 flex items-start space-x-2 animate-in fade-in duration-150">
+                <UserCheck className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
             {errorMsg && (
               <div className="bg-red-50 border-l-4 border-red-600 p-3.5 rounded-r-lg text-xs text-red-700 flex items-start space-x-2">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -148,9 +166,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
               {/* Password Field */}
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
-                  รหัสผ่าน (Password) <span className="text-red-600">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-stone-700">
+                    รหัสผ่าน (Password) <span className="text-red-600">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg("");
+                      setSuccessMsg("");
+                      setShowForgotPassword(true);
+                    }}
+                    className="text-[11px] font-bold text-[#4B5320] hover:text-[#2D3A1B] hover:underline flex items-center gap-1 transition-colors"
+                  >
+                    <KeyRound className="w-3 h-3 text-[#8F9E5B]" />
+                    <span>ลืมรหัสผ่าน?</span>
+                  </button>
+                </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
                     <KeyRound className="w-4 h-4" />
@@ -210,6 +242,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           หมายเลขติดต่อ: <strong className="text-stone-800">{UNIT_INFO.phone}</strong> | Facebook: <strong className="text-blue-700">{UNIT_INFO.facebook}</strong>
         </p>
       </div>
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+        initialMilitaryId={militaryId}
+        onSuccess={(newMilitaryId) => {
+          setMilitaryId(newMilitaryId);
+          setPassword("");
+          setErrorMsg("");
+          setSuccessMsg("ตั้งรหัสผ่านใหม่สำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ที่ท่านกำหนด");
+        }}
+      />
     </div>
   );
 };

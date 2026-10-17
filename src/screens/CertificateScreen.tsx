@@ -8,17 +8,28 @@ interface CertificateScreenProps {
 }
 
 export const CertificateScreen: React.FC<CertificateScreenProps> = ({ certificates }) => {
+  const [certSearch, setCertSearch] = useState("");
   const [selectedCert, setSelectedCert] = useState<Certificate | null>(
     certificates.length > 0 ? certificates[0] : null
   );
 
+  const filteredCerts = certificates.filter((c) => {
+    const term = certSearch.toLowerCase();
+    return (
+      (c.courseTitle || "").toLowerCase().includes(term) ||
+      (c.userName || "").toLowerCase().includes(term) ||
+      (c.militaryId || "").includes(term) ||
+      (c.id || "").toLowerCase().includes(term)
+    );
+  });
+
   useEffect(() => {
-    if (!selectedCert && certificates.length > 0) {
-      setSelectedCert(certificates[0]);
-    } else if (selectedCert && !certificates.some((c) => c.id === selectedCert.id)) {
-      setSelectedCert(certificates[0] || null);
+    if (!selectedCert && filteredCerts.length > 0) {
+      setSelectedCert(filteredCerts[0]);
+    } else if (selectedCert && !filteredCerts.some((c) => c.id === selectedCert.id)) {
+      setSelectedCert(filteredCerts[0] || null);
     }
-  }, [certificates, selectedCert]);
+  }, [certificates, filteredCerts, selectedCert]);
 
   const handlePrintCertificate = () => {
     window.print();
@@ -49,31 +60,60 @@ export const CertificateScreen: React.FC<CertificateScreenProps> = ({ certificat
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Certificate Selector List */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-stone-200 space-y-3">
-            <h3 className="text-xs font-bold text-[#2D3A1B] uppercase tracking-wider">
-              รายการใบประกาศนียบัตร ({certificates.length})
-            </h3>
-            <div className="space-y-2">
-              {certificates.map((cert) => {
-                const isSelected = selectedCert?.id === cert.id;
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-[#2D3A1B] uppercase tracking-wider">
+                รายการใบประกาศนียบัตร ({filteredCerts.length})
+              </h3>
+            </div>
 
-                return (
-                  <button
-                    key={cert.id}
-                    onClick={() => setSelectedCert(cert)}
-                    className={`w-full text-left p-3.5 rounded-xl text-xs transition-all border ${
-                      isSelected
-                        ? "bg-[#3B4823] text-amber-200 border-[#556B2F] font-bold shadow-md"
-                        : "bg-stone-50 hover:bg-stone-100 text-stone-800 border-stone-200"
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Award className={`w-4 h-4 ${isSelected ? "text-amber-300" : "text-stone-400"}`} />
-                      <span className="truncate">{cert.courseTitle}</span>
-                    </div>
-                    <p className="text-[10px] opacity-75 mt-1">ID: {cert.id} • วันที่ออก: {cert.issueDate}</p>
-                  </button>
-                );
-              })}
+            {/* Search Input for Admin / Users */}
+            {certificates.length > 2 && (
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-2.5" />
+                <input
+                  type="text"
+                  value={certSearch}
+                  onChange={(e) => setCertSearch(e.target.value)}
+                  placeholder="ค้นหายศ-ชื่อ หรือหลักสูตร..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-stone-50 border border-stone-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-[#556B2F]"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+              {filteredCerts.length === 0 ? (
+                <p className="text-center text-stone-400 text-xs py-4">ไม่พบใบประกาศฯ ตามคำค้นหา</p>
+              ) : (
+                filteredCerts.map((cert) => {
+                  const isSelected = selectedCert?.id === cert.id;
+
+                  return (
+                    <button
+                      key={cert.id}
+                      onClick={() => setSelectedCert(cert)}
+                      className={`w-full text-left p-3 rounded-xl text-xs transition-all border ${
+                        isSelected
+                          ? "bg-[#3B4823] text-amber-200 border-[#556B2F] font-bold shadow-md"
+                          : "bg-stone-50 hover:bg-stone-100 text-stone-800 border-stone-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-stone-900 truncate">
+                          {cert.userName || cert.militaryId}
+                        </span>
+                        <span className="text-[10px] bg-amber-100 text-amber-900 font-extrabold px-1.5 py-0.5 rounded shrink-0 ml-1">
+                          {cert.scorePercentage}%
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1.5 mt-1 text-stone-600">
+                        <Award className={`w-3.5 h-3.5 shrink-0 ${isSelected ? "text-amber-300" : "text-amber-600"}`} />
+                        <span className="truncate">{cert.courseTitle}</span>
+                      </div>
+                      <p className="text-[10px] opacity-75 mt-0.5">ID: {cert.id} • {cert.issueDate}</p>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
 

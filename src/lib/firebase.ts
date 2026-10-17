@@ -38,6 +38,20 @@ const app =
 // VITE_RECAPTCHA_SITE_KEY=YOUR_SITE_KEY
 
 if (typeof window !== "undefined") {
+  const isLocalhost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  const envDebugToken = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN;
+  if (envDebugToken) {
+    // @ts-ignore
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = envDebugToken;
+  } else if (isLocalhost) {
+    // กำหนดเป็น true เพื่อให้ Firebase SDK สร้าง Debug Token และพิมพ์ลง Browser DevTools Console
+    // @ts-ignore
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
   if (siteKey) {
@@ -47,10 +61,12 @@ if (typeof window !== "undefined") {
         isTokenAutoRefreshEnabled: true,
       });
 
-      console.log("[MedVault] Firebase App Check initialized ✓");
+      console.log(
+        `[MedVault] Firebase App Check initialized ${isLocalhost ? "(Debug Mode)" : ""} ✓`
+      );
     } catch (error) {
-      console.error(
-        "[MedVault] Firebase App Check initialization failed:",
+      console.warn(
+        "[MedVault] Firebase App Check initialization skipped/failed:",
         error
       );
     }

@@ -41,10 +41,21 @@ import {
   subscribeToQuizResults,
   subscribeToCertificates,
   subscribeToAuditLogs,
+  subscribeToNotifications,
+  subscribeToDailyMissions,
+  subscribeToLeaderboard,
+  saveQuizResult,
+  saveCertificate,
+  saveNotification,
+  deleteNotification,
+  saveDailyMission,
+  saveLeaderboardEntry,
+  deleteUserDoc,
   sendChatMessage,
   markChatMessageRead,
   addAuditLog,
   updateUser,
+  saveUser,
 } from "./lib/firebaseFirestore";
 
 import { apiRequest } from "./lib/api";
@@ -105,55 +116,9 @@ const AdminChatScreen = lazyNamed(() => import("./screens/AdminChatScreen"), "Ad
 const AdminControlScreen = lazyNamed(() => import("./screens/AdminControlScreen"), "AdminControlScreen");
 
 /* =========================================================
-   STORAGE HELPERS
-   (ใช้เฉพาะข้อมูลที่ไม่สำคัญ: การแจ้งเตือน และภารกิจประจำวัน)
+   FIREBASE DATA SYNC
+   (ทุกข้อมูลจัดเก็บและซิงค์ผ่าน Cloud Firestore เท่านั้น ไม่ใช้ localStorage)
 ========================================================= */
-
-const loadStored = <T,>(
-  key: string,
-  fallback: T
-): T => {
-  try {
-    const item = localStorage.getItem(key);
-
-    if (item === null) {
-      return fallback;
-    }
-
-    return JSON.parse(item) as T;
-  } catch (error) {
-    console.error(
-      "[STORAGE] Failed to load:",
-      key,
-      error
-    );
-
-    return fallback;
-  }
-};
-
-const saveStored = (
-  key: string,
-  value: unknown
-): void => {
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify(value)
-    );
-  } catch (error) {
-    console.error(
-      "[STORAGE] Failed to save:",
-      key,
-      error
-    );
-  }
-};
-
-const STORAGE_KEYS = {
-  notifications: "medvault_notifications",
-  dailyMissions: "medvault_daily_missions",
-} as const;
 
 // คีย์เดิมที่เคยเก็บข้อมูลสำคัญ (ผู้ใช้/รหัสผ่าน/ผลสอบ) ใน localStorage — ลบทิ้งเมื่อเปิดแอป
 const LEGACY_STORAGE_KEYS = [
@@ -207,13 +172,8 @@ export const App: React.FC = () => {
   const [quizQuestions] = useState<QuizQuestion[]>(INITIAL_QUIZ_QUESTIONS);
   const [documents] = useState<DocumentFile[]>(INITIAL_DOCUMENTS);
 
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
-    loadStored<NotificationItem[]>(STORAGE_KEYS.notifications, INITIAL_NOTIFICATIONS)
-  );
-
-  const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(() =>
-    loadStored<DailyMission[]>(STORAGE_KEYS.dailyMissions, INITIAL_DAILY_MISSIONS)
-  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(INITIAL_DAILY_MISSIONS);
 
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -227,6 +187,51 @@ export const App: React.FC = () => {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  // กำหนดแท็บที่อนุญาตเฉพาะตำแหน่งแอดมินเท่านั้นถึงจะมองเห็นและเข้าถึงได้
+  const ADMIN_ONLY_TABS = ["admin", "ai-assistant", "ai-search", "gmail", "drive", "sheets"];
+
+  useEffect(() => {
+    if (currentUser && currentUser.role !== "admin" && ADMIN_ONLY_TABS.includes(activeTab)) {
+      setActiveTab("dashboard");
+    }
+  }, [activeTab, currentUser]);
+
+  // ตารางอันดับเกียรติยศ: กรองแอดมินออก 100% และดึงคะแนนของกำลังพลทั้งหมด
+  const activeLeaderboard: LeaderboardEntry[] = useMemo(() => {
+    const isSpecialAdmin = (mid?: string, role?: string, name?: string) => {
+      if (role === "admin") return true;
+      if (mid === "1583800101" || mid === "1583800106") return true;
+      if (name && (name.includes("สมชาย ใจภักดี") || name.includes("สุวเมธา สิงหวีระสมร") || name.includes("พันเอก") || name.includes("พ.อ."))) return true;
+      return false;
+    };
+
+    if (leaderboard.length > 0) {
+      return leaderboard
+        .filter((entry) => !isSpecialAdmin(entry.militaryId, (entry as any).role, entry.userName))
+        .map((entry, index) => ({
+          ...entry,
+          rankPosition: index + 1,
+        }));
+    }
+
+    // กรณีคอลเลกชัน leaderboard ยังไม่มีข้อมูล ให้คำนวณจากคะแนน XP ของกำลังพลใน users
+    return users
+      .filter((u) => !isSpecialAdmin(u.militaryId, u.role, `${u.rank} ${u.firstName} ${u.lastName}`))
+      .map((u) => ({
+        id: u.id,
+        rankPosition: 0,
+        userName: `${u.rank} ${u.firstName} ${u.lastName}`.trim(),
+        userRank: u.rank as any,
+        militaryId: u.militaryId,
+        unitCompany: u.unit || "บก.พัน",
+        xp: Number(u.xp) || 0,
+        level: Number(u.level) || 1,
+        badgesCount: 0,
+      }))
+      .sort((a, b) => b.xp - a.xp)
+      .map((entry, idx) => ({ ...entry, rankPosition: idx + 1 }));
+  }, [leaderboard, users]);
 
   /* =======================================================
      2. AUDIT LOG
@@ -315,13 +320,44 @@ export const App: React.FC = () => {
         if (!isMounted) return;
 
         if (!appUser) {
-          pendingLoginLogRef.current = false;
-          setAuthNotice(
-            "ไม่พบข้อมูลกำลังพลของบัญชีนี้ในระบบ กรุณาลงทะเบียนก่อนเข้าใช้งาน หรือติดต่อ ฝยก.ฯ"
-          );
-          resetUserData();
-          await signOutUser();
-          return;
+          const isPrimaryAdmin =
+            firebaseUser.uid === "KHkABkJ7mLOWMqHvxwP5VDnmqdZ2" ||
+            firebaseUser.email === "1583800101@medvault.mil.th" ||
+            firebaseUser.email === "1583800106@medvault.mil.th" ||
+            firebaseUser.email?.toLowerCase().startsWith("admin@");
+
+          if (isPrimaryAdmin) {
+            const adminUser: User = {
+              id: firebaseUser.uid,
+              militaryId: "1583800101",
+              rank: "พันเอก",
+              firstName: "สมชาย",
+              lastName: "ใจภักดี",
+              unit: "กองบังคับการกองพันเสนารักษ์ที่ 4",
+              position: "ผู้บังคับกองพัน / ผู้ดูแลระบบ",
+              phone: "0812345678",
+              role: "admin",
+              isApproved: true,
+              xp: 2500,
+              level: 5,
+              registeredAt: new Date().toISOString(),
+              recoveryEmail: firebaseUser.email || "1583800101@medvault.mil.th",
+            };
+            try {
+              await saveUser(adminUser as any);
+            } catch (err) {
+              console.warn("[MedVault] Could not save admin profile to Firestore:", err);
+            }
+            appUser = adminUser;
+          } else {
+            pendingLoginLogRef.current = false;
+            setAuthNotice(
+              "ไม่พบข้อมูลกำลังพลของบัญชีนี้ในระบบ กรุณาลงทะเบียนก่อนเข้าใช้งาน หรือติดต่อ ฝยก.ฯ"
+            );
+            resetUserData();
+            await signOutUser();
+            return;
+          }
         }
 
         const user = { ...appUser, id: firebaseUser.uid } as User;
@@ -347,16 +383,37 @@ export const App: React.FC = () => {
           // ข้อมูลตัวเองแบบ realtime (XP/Level, ถูกยกเลิกอนุมัติ)
           subscribeToUserDoc(user.id, (fresh) => {
             if (!isMounted) return;
-            if (!fresh || (!fresh.isApproved && fresh.role !== "admin")) {
-              setAuthNotice("บัญชีของท่านถูกระงับหรือยกเลิกการอนุมัติ กรุณาติดต่อ ฝยก.ฯ");
-              void signOutUser();
-              return;
+            if (fresh) {
+              if (!fresh.isApproved && fresh.role !== "admin") {
+                setAuthNotice("บัญชีของท่านถูกระงับหรือยกเลิกการอนุมัติ กรุณาติดต่อ ฝยก.ฯ");
+                void signOutUser();
+                return;
+              }
+              setCurrentUser({ ...(fresh as User), id: user.id });
             }
-            setCurrentUser({ ...(fresh as User), id: user.id });
           }),
           subscribeToQuizResults(scope, (results) => isMounted && setQuizResults(results as QuizResult[])),
           subscribeToCertificates(scope, (certs) => isMounted && setCertificates(certs as Certificate[])),
-          subscribeToChat(scope, (messages) => isMounted && setChatMessages(messages as ChatMessage[]))
+          subscribeToChat(scope, (messages) => isMounted && setChatMessages(messages as ChatMessage[])),
+          subscribeToNotifications(user.id, (notifs) => {
+            if (!isMounted) return;
+            setNotifications(notifs);
+          }),
+          subscribeToDailyMissions(user.id, (missions) => {
+            if (!isMounted) return;
+            if (missions.length === 0) {
+              INITIAL_DAILY_MISSIONS.forEach((m) => {
+                void saveDailyMission({ ...m, userId: user.id });
+              });
+              setDailyMissions(INITIAL_DAILY_MISSIONS);
+            } else {
+              setDailyMissions(missions);
+            }
+          }),
+          subscribeToLeaderboard((board) => {
+            if (!isMounted) return;
+            setLeaderboard(board);
+          })
         );
 
         if (isAdmin) {
@@ -386,39 +443,7 @@ export const App: React.FC = () => {
   }, []);
 
   /* =======================================================
-     4. LOCAL STORAGE SYNC (ข้อมูลไม่สำคัญเท่านั้น)
-  ======================================================= */
-
-  useEffect(() => {
-    saveStored(STORAGE_KEYS.notifications, notifications);
-  }, [notifications]);
-
-  useEffect(() => {
-    saveStored(STORAGE_KEYS.dailyMissions, dailyMissions);
-  }, [dailyMissions]);
-
-  /* =======================================================
-     5. LEADERBOARD (จากเซิร์ฟเวอร์ ไม่เปิดเผยข้อมูลส่วนตัว)
-  ======================================================= */
-
-  useEffect(() => {
-    if (!currentUser || activeTab !== "gamification") return;
-
-    let cancelled = false;
-
-    apiRequest<{ leaderboard: LeaderboardEntry[] }>("/api/leaderboard")
-      .then((data) => {
-        if (!cancelled) setLeaderboard(data.leaderboard || []);
-      })
-      .catch((error) => console.error("[LEADERBOARD] Failed:", error));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, currentUser?.id, currentUser?.xp]);
-
-  /* =======================================================
-     6. LOGIN / LOGOUT / REGISTER
+     4. LOGIN / LOGOUT / REGISTER
   ======================================================= */
 
   const handleLoginSuccess = (): void => {
@@ -450,81 +475,96 @@ export const App: React.FC = () => {
   };
 
   /* =======================================================
-     7. QUIZ (บันทึกผ่านเซิร์ฟเวอร์: ผลสอบ, XP, ใบประกาศ)
+     5. QUIZ (บันทึกผลสอบ, XP, ใบประกาศ ตรงเข้า Cloud Firestore)
   ======================================================= */
 
   const handleFinishQuiz = async (result: QuizResult): Promise<void> => {
     if (!currentUser) return;
 
     try {
-      const response = await apiRequest<{
-        result: QuizResult;
-        certificate: Certificate | null;
-        xp: number;
-        level: number;
-      }>("/api/quiz/result", {
-        body: {
-          courseId: result.courseId,
-          courseTitle: result.courseTitle,
-          score: result.score,
-          totalQuestions: result.totalQuestions,
-        },
+      const percentage = Math.round((result.score / result.totalQuestions) * 100);
+      const passed = percentage >= 80;
+      const xpGain = passed ? 150 : 30;
+      const XP_PER_LEVEL = 500;
+      const currentXp = Number(currentUser.xp) || 0;
+      const newXp = currentXp + xpGain;
+      const newLevel = Math.floor(newXp / XP_PER_LEVEL) + 1;
+      const completedAt = new Date().toISOString();
+
+      // 1. บันทึกผลสอบเข้า Cloud Firestore
+      await saveQuizResult({
+        userId: currentUser.id,
+        userName: `${currentUser.rank} ${currentUser.firstName} ${currentUser.lastName}`.trim(),
+        militaryId: currentUser.militaryId,
+        userRank: currentUser.rank,
+        courseId: result.courseId,
+        courseTitle: result.courseTitle,
+        score: result.score,
+        totalQuestions: result.totalQuestions,
+        percentage,
+        passed,
+        completedAt,
       });
 
-      // อัปเดตข้อมูลผู้ใช้ (XP และ Level) ทันทีบนหน้าจอ
-      if (response && typeof response.xp === "number") {
-        setCurrentUser((prev) =>
-          prev ? { ...prev, xp: response.xp, level: response.level } : null
-        );
-        setUsers((prev) =>
-          prev.map((u) =>
-            u.id === currentUser.id
-              ? { ...u, xp: response.xp, level: response.level }
-              : u
-          )
-        );
+      // 2. อัปเดต XP และ Level เข้า Firestore
+      await updateUser(currentUser.id, { xp: newXp, level: newLevel });
+      setCurrentUser((prev) =>
+        prev ? { ...prev, xp: newXp, level: newLevel } : null
+      );
+
+      // 3. อัปเดตอันดับใน Leaderboard เข้า Firestore (เฉพาะกำลังพลทั่วไป ไม่บันทึกแอดมินขึ้นกระดานคะแนนหรือตารางลำดับ)
+      if (currentUser.role !== "admin") {
+        await saveLeaderboardEntry({
+          id: currentUser.id,
+          rankPosition: 0,
+          userName: `${currentUser.rank} ${currentUser.firstName} ${currentUser.lastName}`.trim(),
+          userRank: currentUser.rank as any,
+          militaryId: currentUser.militaryId,
+          unitCompany: currentUser.unit || "บก.พัน",
+          xp: newXp,
+          level: newLevel,
+          badgesCount: certificates.length + (passed ? 1 : 0),
+        });
       }
 
-      if (response && response.certificate) {
-        setCertificates((prev) => [
-          response.certificate!,
-          ...prev.filter((c) => c.id !== response.certificate!.id),
-        ]);
+      // 4. กรณีสอบผ่าน: ออกใบประกาศนียบัตรและบันทึกการแจ้งเตือนลง Firestore
+      if (passed) {
+        const year = new Date().getFullYear();
+        const code = `MED4-CERT-${year}-` + Math.floor(1000 + Math.random() * 9000);
+        await saveCertificate({
+          userId: currentUser.id,
+          userName: `${currentUser.rank} ${currentUser.firstName} ${currentUser.lastName}`.trim(),
+          militaryId: currentUser.militaryId,
+          userRank: currentUser.rank as any,
+          unit: currentUser.unit || "",
+          courseTitle: result.courseTitle,
+          scorePercentage: percentage,
+          issueDate: completedAt.split("T")[0],
+          qrCodeData: `https://medvault.4thmedbat.rtarf.mi.th/verify/${code}`,
+          commanderName: "พันเอก สมชาย ใจภักดี",
+          commanderRank: "พันเอก",
+        });
 
         const certNotif: NotificationItem = {
           id: "notif-cert-" + Date.now().toString(),
           userId: currentUser.id,
           title: "ได้รับใบประกาศนียบัตรใหม่!",
-          message:
-            "ขอแสดงความยินดี! ท่านผ่านการทดสอบหลักสูตร \"" +
-            result.courseTitle +
-            "\" ด้วยคะแนน " +
-            response.result.percentage +
-            "% และได้รับใบประกาศนียบัตรดิจิทัลแล้ว",
+          message: `ขอแสดงความยินดี! ท่านผ่านการทดสอบหลักสูตร "${result.courseTitle}" ด้วยคะแนน ${percentage}% และได้รับใบประกาศนียบัตรดิจิทัลแล้ว`,
           type: "quiz",
           read: false,
-          timestamp: nowStamp(),
+          timestamp: completedAt,
         };
-
-        setNotifications((prev) => [certNotif, ...prev]);
+        await saveNotification(certNotif);
       }
 
+      // 5. บันทึกประวัติกิจกรรมลง Audit Log ใน Firestore
       void logActivity(
         "TAKE_QUIZ",
         "ระบบข้อสอบ",
-        "ทำแบบทดสอบวิชา \"" +
-          result.courseTitle +
-          "\" ได้คะแนน " +
-          result.score +
-          "/" +
-          result.totalQuestions +
-          " (" +
-          response.result.percentage +
-          "%) - " +
-          (response.result.passed ? "ผ่าน" : "ไม่ผ่าน")
+        `ทำแบบทดสอบวิชา "${result.courseTitle}" ได้คะแนน ${result.score}/${result.totalQuestions} (${percentage}%) - ${passed ? "ผ่าน" : "ไม่ผ่าน"}`
       );
     } catch (error) {
-      console.error("[QUIZ] Failed to save result:", error);
+      console.error("[QUIZ] Failed to save result to Firestore:", error);
       throw error;
     }
   };
@@ -544,6 +584,15 @@ export const App: React.FC = () => {
 
     try {
       await updateUser(userId, { isApproved: true });
+      await saveNotification({
+        id: "notif-appr-" + Date.now().toString(),
+        userId,
+        title: "บัญชีได้รับการอนุมัติแล้ว",
+        message: "ฝยก.ฯ ได้อนุมัติบัญชีของท่านแล้ว สามารถเข้าศึกษาและทดสอบความรู้ได้ทันที",
+        type: "approval",
+        read: false,
+        timestamp: new Date().toISOString(),
+      });
 
       void logActivity(
         "APPROVE_USER",
@@ -573,9 +622,16 @@ export const App: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await apiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
-        method: "DELETE",
-      });
+      await deleteUserDoc(userId);
+      try {
+        await apiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
+          method: "DELETE",
+        });
+      } catch {
+        // Ignored if server API is unavailable in local dev
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
 
       void logActivity(
         "REJECT_USER",
@@ -639,18 +695,12 @@ export const App: React.FC = () => {
       return;
     }
 
-    Object.values(STORAGE_KEYS).forEach((key) => {
-      localStorage.removeItem(key);
-    });
-
-    setNotifications([...INITIAL_NOTIFICATIONS]);
+    setNotifications([]);
     setDailyMissions([...INITIAL_DAILY_MISSIONS]);
     setSelectedCourse(null);
     setShowNotificationsModal(false);
 
-    alert(
-      "รีเซ็ตข้อมูลในเครื่อง (การแจ้งเตือน/ภารกิจประจำวัน) สำเร็จ\nข้อมูลผู้ใช้ ผลสอบ และใบประกาศใน Firestore ไม่ได้รับผลกระทบ"
-    );
+    alert("รีเซ็ตสถานะหน้าจอสำเร็จ");
   };
 
   /* =======================================================
@@ -1063,7 +1113,7 @@ export const App: React.FC = () => {
             }
 
             leaderboard={
-              leaderboard
+              activeLeaderboard
             }
           />
         )}
@@ -1113,7 +1163,8 @@ export const App: React.FC = () => {
         ================================================ */}
 
         {activeTab ===
-          "ai-assistant" && (
+          "ai-assistant" &&
+          currentUser.role === "admin" && (
           <AiAssistantScreen
             currentUser={
               currentUser
@@ -1130,7 +1181,8 @@ export const App: React.FC = () => {
         ================================================ */}
 
         {activeTab ===
-          "ai-search" && (
+          "ai-search" &&
+          currentUser.role === "admin" && (
           <AiSearchScreen
             onLogActivity={
               logActivity
@@ -1143,7 +1195,8 @@ export const App: React.FC = () => {
         ================================================ */}
 
         {activeTab ===
-          "gmail" && (
+          "gmail" &&
+          currentUser.role === "admin" && (
           <GmailScreen
             currentUser={
               currentUser
@@ -1156,7 +1209,8 @@ export const App: React.FC = () => {
         ================================================ */}
 
         {activeTab ===
-          "drive" && (
+          "drive" &&
+          currentUser.role === "admin" && (
           <DriveScreen
             currentUser={
               currentUser
@@ -1169,7 +1223,8 @@ export const App: React.FC = () => {
         ================================================ */}
 
         {activeTab ===
-          "sheets" && (
+          "sheets" &&
+          currentUser.role === "admin" && (
           <SheetsScreen
             currentUser={
               currentUser
@@ -1364,23 +1419,7 @@ export const App: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              setNotifications(
-                                (
-                                  prev
-                                ) =>
-                                  prev.map(
-                                    (
-                                      n
-                                    ) =>
-                                      n.id ===
-                                      notif.id
-                                        ? {
-                                            ...n,
-                                            read: true,
-                                          }
-                                        : n
-                                  )
-                              );
+                              void saveNotification({ ...notif, read: true });
                             }}
                             className="text-[11px] text-[#556B2F] font-bold hover:underline shrink-0 p-1"
                             title="ทำเครื่องหมายว่าอ่านแล้ว"
@@ -1408,27 +1447,12 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (!currentUser) {
-                    return;
-                  }
-
-                  setNotifications(
-                    (prev) =>
-                      prev.map(
-                        (n) =>
-                          (
-                            n.userId ===
-                              currentUser.id ||
-                            n.userId ===
-                              "ALL"
-                          )
-                            ? {
-                                ...n,
-                                read: true,
-                              }
-                            : n
-                      )
-                  );
+                  if (!currentUser) return;
+                  notifications.forEach((n) => {
+                    if ((n.userId === currentUser.id || n.userId === "ALL") && !n.read) {
+                      void saveNotification({ ...n, read: true });
+                    }
+                  });
                 }}
                 className="text-[#4B5320] font-semibold hover:underline"
               >

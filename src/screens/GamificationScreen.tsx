@@ -13,6 +13,17 @@ export const GamificationScreen: React.FC<GamificationScreenProps> = ({
   dailyMissions,
   leaderboard,
 }) => {
+  // กรองเฉพาะกำลังพลทั่วไป ไม่แสดงรายชื่อและคะแนนของแอดมินหรือผู้บังคับบัญชาในกระดานคะแนนเกียรติยศ
+  const filteredLeaderboard = leaderboard.filter((entry) => {
+    const isSpecialAdmin =
+      entry.militaryId === "1583800101" ||
+      entry.militaryId === "1583800106" ||
+      (entry as any).role === "admin" ||
+      entry.userName?.includes("สมชาย ใจภักดี") ||
+      entry.userRank === "พันเอก";
+    return !isSpecialAdmin;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -28,6 +39,39 @@ export const GamificationScreen: React.FC<GamificationScreenProps> = ({
 
       {/* User Progress Stats Card */}
       {(() => {
+        if (currentUser.role === "admin") {
+          return (
+            <div className="bg-gradient-to-r from-stone-900 to-[#2D3A1B] text-white p-6 rounded-2xl shadow-md border-2 border-[#556B2F] grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+              <div className="flex items-center space-x-4">
+                <div className="w-16 h-16 rounded-full bg-amber-400 text-stone-950 border-2 border-amber-300 flex items-center justify-center font-black text-xs shadow-inner shrink-0 uppercase tracking-wider">
+                  ADMIN
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="bg-amber-400/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-400/30">
+                      ผู้ดูแลระบบ / ผู้บังคับบัญชา
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-white mt-1">
+                    {currentUser.rank} {currentUser.firstName} {currentUser.lastName}
+                  </h3>
+                  <p className="text-xs text-stone-300">ตำแหน่ง: {currentUser.position}</p>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 space-y-1.5 bg-black/30 p-4 rounded-xl border border-white/10 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  <span>โหมดกำกับดูแลและติดตามคะแนนกำลังพล (Oversight Mode)</span>
+                </div>
+                <p className="text-stone-300 text-[11px] leading-relaxed">
+                  ท่านมีสิทธิ์ดูคะแนนและอันดับเกียรติยศของกำลังพลทุกนายในหน่วย • ตามระเบียบความโปร่งใส บัญชีผู้ดูแลระบบจะไม่ถูกนำมาคำนวณหรือจัดลำดับแข่งขันในกระดานคะแนนใดๆ
+                </p>
+              </div>
+            </div>
+          );
+        }
+
         const XP_PER_LEVEL = 500;
         const currentXp = Number(currentUser.xp) || 0;
         const currentLevel = Number(currentUser.level) || Math.floor(currentXp / XP_PER_LEVEL) + 1;
@@ -141,20 +185,28 @@ export const GamificationScreen: React.FC<GamificationScreenProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200">
-                {leaderboard.map((entry) => {
-                  const isTopOne = entry.rankPosition === 1;
+                {filteredLeaderboard.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-stone-400">
+                      กำลังโหลดหรือยังไม่มีข้อมูลคะแนนกำลังพลในระบบ
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLeaderboard.map((entry, idx) => {
+                    const rankPos = entry.rankPosition ?? (idx + 1);
+                    const isTopOne = rankPos === 1;
 
-                  return (
-                    <tr key={entry.militaryId} className={isTopOne ? "bg-amber-50 font-semibold" : "hover:bg-stone-50"}>
+                    return (
+                      <tr key={entry.militaryId} className={isTopOne ? "bg-amber-50 font-semibold" : "hover:bg-stone-50"}>
                       <td className="p-3 font-bold">
-                        {entry.rankPosition === 1 ? (
+                        {rankPos === 1 ? (
                           <span className="text-amber-600 flex items-center gap-1">🥇 #1</span>
-                        ) : entry.rankPosition === 2 ? (
+                        ) : rankPos === 2 ? (
                           <span className="text-stone-500">🥈 #2</span>
-                        ) : entry.rankPosition === 3 ? (
+                        ) : rankPos === 3 ? (
                           <span className="text-amber-800">🥉 #3</span>
                         ) : (
-                          <span>#{entry.rankPosition}</span>
+                          <span>#{rankPos}</span>
                         )}
                       </td>
                       <td className="p-3 font-bold text-stone-900">{entry.userName}</td>
@@ -163,7 +215,7 @@ export const GamificationScreen: React.FC<GamificationScreenProps> = ({
                       <td className="p-3 text-right font-black text-amber-700">{entry.xp} XP</td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>

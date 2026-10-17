@@ -38,24 +38,6 @@ export const Scorecard17ReportModal: React.FC<Scorecard17ReportModalProps> = ({
         ? matchedResults.reduce((prev, curr) => (curr.percentage > prev.percentage ? curr : prev))
         : null;
 
-    // Special case for Admin / Default Commander demo if needed
-    const isAdminOverride = activeUser.militaryId === "1583800101";
-
-    if (isAdminOverride) {
-      return {
-        index: idx + 1,
-        courseId: course.id,
-        courseTitle: course.title,
-        category: course.category || "วิชาบังคับ",
-        scoreText: "10/10",
-        percentageText: "100%",
-        passed: true,
-        statusText: "ผ่านเกณฑ์ดีเยี่ยม",
-        dateText: "2026-08-01",
-        isTested: true,
-      };
-    }
-
     if (bestResult) {
       return {
         index: idx + 1,
@@ -109,7 +91,7 @@ export const Scorecard17ReportModal: React.FC<Scorecard17ReportModalProps> = ({
           <div className="flex items-center space-x-2">
             <FileText className="w-5 h-5 text-amber-300" />
             <span className="font-bold text-sm text-amber-200">
-              รายงานผลสรุปการประเมิน 17 วิชา (1 หน้ากระดาษ)
+              รายงานผลสรุปการประเมิน Unit School ({courses.length} วิชา) (1 หน้ากระดาษ)
             </span>
           </div>
           <div className="flex items-center space-x-3">
@@ -149,7 +131,7 @@ export const Scorecard17ReportModal: React.FC<Scorecard17ReportModalProps> = ({
                   {UNIT_INFO.name} ({UNIT_INFO.camp})
                 </h1>
                 <p className="text-xs font-bold text-stone-700">
-                  แบบบันทึกประวัติผลการทดสอบความรู้ทางสายแพทย์ทหาร ๑๗ วิชาบังคับ
+                  แบบบันทึกประวัติผลการทดสอบความรู้ทางการแพทย์ทหาร Unit School ประจำปี ๒๕๗๐ ({courses.length} วิชา)
                 </p>
                 <p className="text-[10px] text-stone-500">
                   ศูนย์การเรียนรู้ทางแพทย์ออนไลน์ (Online Medical Education System)
@@ -159,7 +141,7 @@ export const Scorecard17ReportModal: React.FC<Scorecard17ReportModalProps> = ({
 
             <div className="text-right shrink-0">
               <span className="inline-block px-2.5 py-1 bg-[#2D3A1B] text-amber-200 text-[10px] font-mono font-bold rounded border border-[#556B2F]">
-                DOCUMENT FORM MED4-17
+                DOCUMENT FORM MED4-US70
               </span>
               <p className="text-[10px] text-stone-500 mt-1">วันที่ออกรายงาน: {currentDate}</p>
             </div>
@@ -185,13 +167,13 @@ export const Scorecard17ReportModal: React.FC<Scorecard17ReportModalProps> = ({
             </div>
           </div>
 
-          {/* 17 COURSES SCORE TABLE */}
+          {/* COURSES SCORE TABLE */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[11px] border-collapse border border-stone-800 bg-white">
               <thead>
                 <tr className="bg-[#2D3A1B] text-amber-200 text-center font-bold divide-x divide-[#4B5320]">
                   <th className="p-1.5 w-8">ลำดับ</th>
-                  <th className="p-1.5">ชื่อวิชาทางการแพทย์ทหาร (๑๗ วิชา)</th>
+                  <th className="p-1.5">ชื่อวิชาทางการแพทย์ทหาร ({courses.length} วิชา)</th>
                   <th className="p-1.5 w-20">คะแนนที่ได้</th>
                   <th className="p-1.5 w-16">ร้อยละ (%)</th>
                   <th className="p-1.5 w-24">ผลการประเมิน</th>
@@ -254,16 +236,16 @@ export const Scorecard17ReportModal: React.FC<Scorecard17ReportModalProps> = ({
             <div>
               <span className="font-bold text-[#2D3A1B]">สรุปภาพรวมการทดสอบ: </span>
               <span>
-                ทำการทดสอบแล้ว <strong className="text-stone-900">{testedCount}</strong> จาก 17 วิชา
+                ทำการทดสอบแล้ว <strong className="text-stone-900">{testedCount}</strong> จาก {courses.length} วิชา
                 (ผ่านเกณฑ์ 80% ขึ้นไป <strong className="text-emerald-700">{passedCount}</strong> วิชา)
               </span>
             </div>
             <div className="flex items-center space-x-2">
               <span className="text-[10px] text-stone-500">เกณฑ์การผ่านประเมิน: 80% ขึ้นไปทุกวิชา</span>
-              {passedCount === 17 && (
+              {passedCount === courses.length && courses.length > 0 && (
                 <span className="bg-emerald-700 text-white font-black text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
                   <CheckCircle className="w-3 h-3 text-amber-300" />
-                  ผ่านการทดสอบครบ 17 วิชา
+                  ผ่านการทดสอบครบ {courses.length} วิชา
                 </span>
               )}
             </div>

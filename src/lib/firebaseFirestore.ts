@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { type AppUser } from "./firebaseAuth";
+import type { NotificationItem, DailyMission, LeaderboardEntry } from "../types";
 export type { AppUser };
 
 // --- Users ---
@@ -265,3 +266,89 @@ export const subscribeToUserDoc = (
     (snap) => callback(snap.exists() ? ({ ...(snap.data() as AppUser), id: snap.id }) : null),
     (error) => console.error("[USER] Subscription failed:", error)
   );
+
+// --- Notifications (Firestore) ---
+export const saveNotification = async (notif: NotificationItem) => {
+  const notifRef = doc(db, "notifications", notif.id);
+  await setDoc(notifRef, notif);
+};
+
+export const deleteNotification = async (notifId: string) => {
+  await deleteDoc(doc(db, "notifications", notifId));
+};
+
+export const subscribeToNotifications = (
+  userId: string,
+  callback: (notifs: NotificationItem[]) => void
+) => {
+  const q = query(collection(db, "notifications"), where("userId", "in", [userId, "ALL"]));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs.map((d) => d.data() as NotificationItem);
+      items.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+      callback(items);
+    },
+    (error) => console.error("[NOTIF] Subscription failed:", error)
+  );
+};
+
+// --- Daily Missions (Firestore) ---
+export const saveDailyMission = async (mission: DailyMission & { userId: string }) => {
+  const missionRef = doc(db, "dailyMissions", `${mission.userId}_${mission.id}`);
+  await setDoc(missionRef, mission);
+};
+
+export const subscribeToDailyMissions = (
+  userId: string,
+  callback: (missions: DailyMission[]) => void
+) => {
+  const q = query(collection(db, "dailyMissions"), where("userId", "==", userId));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs.map((d) => d.data() as DailyMission);
+      callback(items);
+    },
+    (error) => console.error("[MISSIONS] Subscription failed:", error)
+  );
+};
+
+// --- Leaderboard (Firestore) ---
+export const saveLeaderboardEntry = async (entry: LeaderboardEntry & { id: string }) => {
+  const ref = doc(db, "leaderboard", entry.id);
+  await setDoc(ref, { ...entry, userId: entry.id });
+};
+
+export const subscribeToLeaderboard = (
+  callback: (entries: LeaderboardEntry[]) => void
+) => {
+  const q = query(collection(db, "leaderboard"), orderBy("xp", "desc"), limit(100));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs
+        .map((d) => d.data() as LeaderboardEntry & { role?: string })
+        .filter((entry) => {
+          // ไม่เอาคะแนนและชื่อของแอดมินขึ้นในกระดานคะแนนหรือตารางลำดับใดๆ
+          if (entry.role === "admin") return false;
+          if (entry.militaryId === "1583800101" || entry.militaryId === "1583800106") return false;
+          const name = String(entry.userName || "");
+          if (name.includes("สมชาย") && name.includes("ใจภักดี")) return false;
+          if (entry.userRank === "พันเอก" || name.includes("พ.อ.") || name.includes("พันเอก")) return false;
+          return true;
+        })
+        .map((d, index) => ({
+          ...d,
+          rankPosition: index + 1,
+        }));
+      callback(items);
+    },
+    (error) => console.error("[LEADERBOARD] Subscription failed:", error)
+  );
+};
+
+export const deleteUserDoc = async (uid: string) => {
+  await deleteDoc(doc(db, "users", uid));
+};
+

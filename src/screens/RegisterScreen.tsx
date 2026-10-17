@@ -15,6 +15,7 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Mail,
 } from "lucide-react";
 import { signUpWithEmail } from "../lib/firebaseAuth";
 
@@ -61,6 +62,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [position, setPosition] = useState("เสนารักษ์ประจำกองร้อย");
   const [customPosition, setCustomPosition] = useState("");
   const [phone, setPhone] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [unit, setUnit] = useState("กองร้อยพยาบาลที่ 1 (ร้อย.พย.1)");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -87,6 +89,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
     if (!phone.trim() || phone.trim().length < 9) {
       setErrorMsg("กรุณากรอกหมายเลขโทรศัพท์ที่สามารถติดต่อได้ (อย่างน้อย 9-10 หลัก)");
+      return;
+    }
+
+    if (recoveryEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail.trim())) {
+      setErrorMsg("รูปแบบอีเมลสำหรับกู้คืนรหัสผ่านไม่ถูกต้อง (เช่น example@gmail.com)");
       return;
     }
 
@@ -126,6 +133,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         militaryId: militaryId.trim(),
         position: finalPosition,
         phone: phone.trim(),
+        recoveryEmail: recoveryEmail.trim() || undefined,
         role: "user" as const,
         // บัญชีใหม่ต้องรอแอดมินอนุมัติก่อนใช้งาน
         isApproved: false,
@@ -159,8 +167,16 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         setErrorMsg("หมายเลขประจำตัวทหาร (Username) นี้ถูกใช้งานแล้ว");
       } else if (error.code === 'auth/weak-password') {
         setErrorMsg("รหัสผ่านคาดเดาง่ายเกินไป กรุณาใช้รหัสผ่านที่ซับซ้อนขึ้น");
+      } else if (
+        error.code === "auth/firebase-app-check-token-is-invalid." ||
+        error.code === "auth/app-check-token-invalid" ||
+        String(error.message || "").toLowerCase().includes("app-check")
+      ) {
+        setErrorMsg(
+          "Firebase App Check บล็อกคำขอลงทะเบียน (Identity Toolkit Enforced): กรุณาเปลี่ยนสถานะเป็น Unenforce ใน Firebase Console หรือลงทะเบียน Debug Token"
+        );
       } else {
-        setErrorMsg("เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่อีกครั้ง");
+        setErrorMsg("เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่อีกครั้ง (" + (error.message || error.code || "") + ")");
       }
     }
   };
@@ -317,6 +333,33 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Recovery Email Field */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-stone-700">
+                    อีเมลสำหรับรับลิงก์กู้คืนรหัสผ่าน (Recovery Email)
+                  </label>
+                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    แนะนำให้กรอก
+                  </span>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    value={recoveryEmail}
+                    onChange={(e) => setRecoveryEmail(e.target.value)}
+                    placeholder="เช่น yourname@gmail.com หรือ hotmail.com"
+                    className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-sm text-stone-900 focus:ring-2 focus:ring-[#4B5320] focus:border-[#4B5320] outline-none transition-all"
+                  />
+                </div>
+                <p className="text-[10px] text-stone-500 mt-1">
+                  💡 ระบุอีเมลจริงที่ท่านใช้งานเป็นประจำ สำหรับส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังกล่องจดหมายกรณีลืมรหัสผ่าน
+                </p>
               </div>
 
               {/* Row 3: Unit Company & Position */}

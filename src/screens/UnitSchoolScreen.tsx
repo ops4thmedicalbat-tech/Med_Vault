@@ -88,12 +88,23 @@ export const UnitSchoolScreen: React.FC<UnitSchoolScreenProps> = ({
 
   const instructors = [
     "ทั้งหมด",
-    ...Array.from(new Set(schedule.map((item) => item.instructor))),
+    ...Array.from(
+      new Set(
+        schedule
+          .flatMap((item) => item.instructor.split(",").map((s) => s.trim()))
+          .filter(Boolean)
+      )
+    ),
   ];
 
   const filteredSchedule = schedule.filter((item) => {
     const matchesInstructor =
-      selectedInstructor === "ทั้งหมด" || item.instructor === selectedInstructor;
+      selectedInstructor === "ทั้งหมด" ||
+      item.instructor
+        .split(",")
+        .map((s) => s.trim())
+        .includes(selectedInstructor) ||
+      item.instructor.includes(selectedInstructor);
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       item.subject.toLowerCase().includes(term) ||
@@ -135,7 +146,7 @@ export const UnitSchoolScreen: React.FC<UnitSchoolScreenProps> = ({
     link.href = url;
     link.setAttribute(
       "download",
-      `ตารางกำหนดการเรียนการสอน_Unit_School_พันสร4_${new Date().toISOString().split("T")[0]}.csv`
+      `ตารางกำหนดการเรียนการสอน_Unit_School_ปีงบประมาณ2570_พันสร4.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -155,26 +166,39 @@ export const UnitSchoolScreen: React.FC<UnitSchoolScreenProps> = ({
               <span className="text-xs text-stone-300">• กองพันเสนารักษ์ที่ 4</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold text-white mt-1">
-              ตารางกำหนดการเรียนการสอน Unit School
+              ตารางกำหนดการเรียนการสอน Unit School ประจำปีงบประมาณ ๒๕๗๐ (๑๖ วิชา ๓๒ ครั้ง)
             </h2>
             <p className="text-xs text-amber-200 font-medium">
-              ประกอบ คำสั่ง พัน.สร.๔ ที่ ๑๑ / ๒๕๖๙ ลง ๗ ต.ค. ๖๙
+              ประกอบ คำสั่ง พัน.สร.๔ ที่ ๒๑๕ / ๒๕๖๙ ลง ๗ ต.ค. ๖๙ (ผนวก ข : ตารางการฝึกประจำปีงบประมาณ ๒๕๗๐ ช่วง ๑๕ ต.ค. ๖๙ - ๑๐ ก.ย. ๗๐)
             </p>
           </div>
 
-          <button
-            onClick={handleExportCSV}
-            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md transition-all shrink-0 border border-emerald-500"
-          >
-            <Download className="w-4 h-4 text-amber-300" />
-            <span>ดาวน์โหลดตารางการเรียน (.CSV)</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/การเรียนการสอน_พันสร4_Unit_School.pdf"
+              download="การเรียนการสอน_พันสร4_Unit_School.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md transition-all shrink-0 border border-red-500"
+            >
+              <FileText className="w-4 h-4 text-amber-200" />
+              <span>ดาวน์โหลดคำสั่งฉบับเต็ม (.PDF)</span>
+            </a>
+
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md transition-all shrink-0 border border-emerald-500"
+            >
+              <Download className="w-4 h-4 text-amber-300" />
+              <span>ดาวน์โหลดตารางการเรียน (.CSV)</span>
+            </button>
+          </div>
         </div>
 
         <p className="text-xs text-stone-300 leading-relaxed max-w-3xl border-t border-[#4B5320] pt-2">
           ตารางอบรมวิชาการยุทธวิธี การแพทย์สนาม และการส่งกลับทางสายแพทย์
           ของกำลังพล กองพันเสนารักษ์ที่ 4 ค่ายสมเด็จพระนเรศวรมหาราช
-          (จัดลำดับเรียงตามวันที่ในคำสั่งสั่งการ)
+          (จัดตามลำดับวันที่ในคำสั่งสั่งการ ประจำปีงบประมาณ ๒๕๗๐ ครบทั้ง ๑๖ วิชา ๓๒ ครั้ง ตั้งแต่ ต.ค. ๒๕๖๙ - ก.ย. ๒๕๗๐)
         </p>
       </div>
 
@@ -216,7 +240,7 @@ export const UnitSchoolScreen: React.FC<UnitSchoolScreenProps> = ({
             รายการวิชาตามกำหนดการเรียนการสอน (รวม {filteredSchedule.length} รายการ)
           </h3>
           <span className="text-[11px] text-stone-500">
-            สถานที่ฝึก: <strong className="text-stone-800">ร้อย.สร.๑</strong> | การแต่งกาย: <strong className="text-stone-800">ชุดฝึกพราง</strong>
+            สถานที่ฝึก: <strong className="text-stone-800">ร้อย.สร.๑ พัน.สร.๔</strong> | การแต่งกาย: <strong className="text-stone-800">ชุดฝึกพราง</strong>
           </span>
         </div>
 
@@ -228,7 +252,7 @@ export const UnitSchoolScreen: React.FC<UnitSchoolScreenProps> = ({
                 <th className="p-3 w-28 text-center">ว.ด.ป.</th>
                 <th className="p-3 w-28 text-center font-mono">เวลา</th>
                 <th className="p-3 min-w-[220px]">วิชา</th>
-                <th className="p-3 w-40">ผู้สอน</th>
+                <th className="p-3 min-w-[210px]">ผู้สอน</th>
                 <th className="p-3 w-44">หลักฐาน/ตำรา</th>
                 <th className="p-3 w-24 text-center">สถานที่</th>
                 <th className="p-3 w-24 text-center">การแต่งกาย</th>
@@ -280,10 +304,14 @@ export const UnitSchoolScreen: React.FC<UnitSchoolScreenProps> = ({
                       </td>
 
                       {/* ผู้สอน */}
-                      <td className="p-3 font-semibold text-stone-800 whitespace-nowrap">
-                        <div className="flex items-center space-x-1">
-                          <User className="w-3.5 h-3.5 text-[#556B2F] shrink-0" />
-                          <span>{item.instructor}</span>
+                      <td className="p-3 font-semibold text-stone-800">
+                        <div className="space-y-1">
+                          {item.instructor.split(",").map((inst, idx) => (
+                            <div key={idx} className="flex items-center space-x-1.5 text-xs">
+                              <User className="w-3.5 h-3.5 text-[#556B2F] shrink-0" />
+                              <span className="leading-tight text-stone-800 whitespace-nowrap">{inst.trim()}</span>
+                            </div>
+                          ))}
                         </div>
                       </td>
 

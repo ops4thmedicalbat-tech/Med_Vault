@@ -61,7 +61,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: "courses",
       label: "หลักสูตร & บทเรียน",
       icon: BookOpen,
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: "quizzes",

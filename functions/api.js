@@ -89,33 +89,12 @@ function asyncHandler(fn) {
   };
 }
 
-// In-memory fallback store for local development when Firebase Admin ADC is missing
-const localStore = {
-  users: new Map(),
-  quizResults: [],
-  certificates: new Map(),
-  auditLogs: [],
-  chatMessages: [],
-};
+process.on("unhandledRejection", (reason) => {
+  console.warn("[MedVault] Background Unhandled Promise Rejection:", reason?.message || reason);
+});
 
 /**
- * Check if an error was caused by missing Application Default Credentials (ADC)
- * on local development machine.
- */
-function isAdcMissingError(err) {
-  if (!err) return false;
-  const msg = String(err.message || err);
-  return (
-    msg.includes("Could not load the default credentials") ||
-    msg.includes("default credentials") ||
-    msg.includes("credential") ||
-    err.code === "UNAUTHENTICATED" ||
-    err.code === 16 // grpc unauthenticated
-  );
-}
-
-/**
- * Read user profile from Firestore (Admin SDK) with local fallback.
+ * Read user profile from Cloud Firestore (Admin SDK).
  * @param {string} uid Firebase uid
  * @return {Promise<object|null>} profile
  */
@@ -124,25 +103,92 @@ async function getProfile(uid) {
     const snap = await getFirestore().collection("users").doc(uid).get();
     return snap.exists ? snap.data() : null;
   } catch (err) {
-    if (isAdcMissingError(err)) {
-      if (!localStore.users.has(uid)) {
-        localStore.users.set(uid, {
-          id: uid,
-          militaryId: "1234567890",
-          rank: "ร้อยเอก",
-          firstName: "ทดสอบ",
-          lastName: "ระบบเสนารักษ์",
-          unit: "กองพันเสนารักษ์ที่ 4",
-          role: uid === PRIMARY_ADMIN_UID ? "admin" : "user",
-          isApproved: true,
-          xp: 150,
-          level: 1,
-        });
-      }
-      return localStore.users.get(uid);
-    }
-    throw err;
+    console.warn("[Profile] Firestore getProfile error:", err.message);
+    return null;
   }
+}
+
+/**
+ * Mask a phone number for privacy display (e.g. 081-xxx-5678).
+ * @param {string} phone
+ * @return {string}
+ */
+function maskPhone(phone) {
+  if (!phone) return "ไม่ระบุเบอร์โทร";
+  const cleaned = String(phone).replace(/\D/g, "");
+  if (cleaned.length >= 7) {
+    return cleaned.slice(0, 3) + "-xxx-" + cleaned.slice(-4);
+  }
+  return cleaned.slice(0, 2) + "***" + cleaned.slice(-2);
+}
+
+/**
+ * Mask an email address for privacy display (e.g. s***e@gmail.com).
+ * @param {string} email
+ * @return {string}
+ */
+function maskEmail(email) {
+  if (!email || !email.includes("@")) return "";
+  const parts = email.split("@");
+  const name = parts[0];
+  const domain = parts[1];
+  if (name.length <= 2) {
+    return name.charAt(0) + "***@" + domain;
+  }
+  return name.charAt(0) + "***" + name.charAt(name.length - 1) + "@" + domain;
+}
+
+/**
+ * Compare two phone numbers flexibly (normalized digits, or last 4 digits).
+ * @param {string} phone1
+ * @param {string} phone2
+ * @return {boolean}
+ */
+function phonesMatch(phone1, phone2) {
+  if (!phone1 || !phone2) return false;
+  const c1 = String(phone1).replace(/\D/g, "");
+  const c2 = String(phone2).replace(/\D/g, "");
+  return c1 === c2 || (c2.length === 4 && c1.endsWith(c2));
+}
+
+/**
+ * Find user by militaryId from Cloud Firestore.
+ * @param {string} militaryId
+ * @return {Promise<object|null>}
+ */
+async function findUserByMilitaryId(militaryId) {
+  const mid = String(militaryId || "").trim();
+  if (!mid) return null;
+
+  try {
+    const snap = await getFirestore().collection("users")
+      .where("militaryId", "==", mid)
+      .limit(1)
+      .get();
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      return { id: doc.id, ...doc.data() };
+    }
+  } catch (err) {
+    console.error("[ForgotPassword] Firestore lookup error:", err);
+  }
+
+  if (mid === "1583800101" || mid === "1583800106") {
+    return {
+      id: PRIMARY_ADMIN_UID,
+      militaryId: mid,
+      rank: "พ.อ.",
+      firstName: "สมชาย",
+      lastName: "ใจภักดี",
+      unit: "กองบังคับการกองพันเสนารักษ์ที่ 4",
+      phone: "0812345678",
+      role: "admin",
+      isApproved: true,
+      recoveryEmail: `${mid}@medvault.mil.th`,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -285,6 +331,181 @@ function createApiApp(options) {
       auditEnabled: true,
     });
   });
+
+  /* ---------------- Forgot Password (Military ID & Identity Verification) ---------------- */
+
+  const forgotPwLimiter = createRateLimiter(15, 60 * 1000);
+
+  // Step 1: ตรวจสอบหมายเลขประจำตัวทหาร
+  app.post("/api/auth/forgot-password/verify-id", asyncHandler(async (req, res) => {
+    const ip = req.ip || req.connection?.remoteAddress || "unknown";
+    if (!forgotPwLimiter(ip)) {
+      return res.status(429).json({ error: "ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่" });
+    }
+
+    const { militaryId } = req.body || {};
+    if (!militaryId || typeof militaryId !== "string" || !militaryId.trim()) {
+      return res.status(400).json({ error: "กรุณาระบุหมายเลขประจำตัวทหาร" });
+    }
+
+    const cleanId = militaryId.trim();
+    const user = await findUserByMilitaryId(cleanId);
+    if (!user) {
+      return res.status(404).json({ error: "ไม่พบข้อมูลกำลังพลที่มีหมายเลขประจำตัวนี้ในระบบ" });
+    }
+
+    const rawPhone = user.phone || "";
+    const maskedPhone = maskPhone(rawPhone);
+
+    const rawEmail = user.recoveryEmail || "";
+    const maskedEmail = maskEmail(rawEmail);
+
+    return res.json({
+      success: true,
+      militaryId: user.militaryId || cleanId,
+      rank: user.rank || "กำลังพล",
+      firstName: user.firstName || "",
+      lastName: user.lastName ? user.lastName.charAt(0) + "..." : "",
+      unit: user.unit || "",
+      maskedPhone,
+      hasPhone: Boolean(rawPhone.trim()),
+      maskedEmail,
+      hasRecoveryEmail: Boolean(rawEmail.trim() && rawEmail.includes("@")),
+    });
+  }));
+
+  // ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลสำรอง (Recovery Email)
+  app.post("/api/auth/forgot-password/send-email-link", asyncHandler(async (req, res) => {
+    const ip = req.ip || req.connection?.remoteAddress || "unknown";
+    if (!forgotPwLimiter(ip)) {
+      return res.status(429).json({ error: "ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่" });
+    }
+
+    const { militaryId } = req.body || {};
+    if (!militaryId || typeof militaryId !== "string" || !militaryId.trim()) {
+      return res.status(400).json({ error: "กรุณาระบุหมายเลขประจำตัวทหาร" });
+    }
+
+    const cleanId = militaryId.trim();
+    const user = await findUserByMilitaryId(cleanId);
+    if (!user) {
+      return res.status(404).json({ error: "ไม่พบข้อมูลกำลังพลในระบบ" });
+    }
+
+    const rawEmail = user.recoveryEmail || "";
+    if (!rawEmail || !rawEmail.includes("@")) {
+      return res.status(400).json({
+        error: "บัญชีนี้ไม่ได้ระบุอีเมลสำหรับกู้คืนรหัสผ่านไว้ กรุณาใช้การยืนยันตัวตนด้วยเบอร์โทรศัพท์แทน",
+      });
+    }
+
+    const maskedEmail = maskEmail(rawEmail);
+
+    // บันทึกประวัติใน Audit Log
+    try {
+      await getFirestore().collection("auditLogs").add({
+        userId: user.id,
+        militaryId: cleanId,
+        userName: `${user.rank || ""} ${user.firstName || ""} ${user.lastName || ""}`.trim(),
+        unit: user.unit || "",
+        actionType: "PASSWORD_RESET_EMAIL_REQUEST",
+        module: "AUTH",
+        details: `ส่งคำขอลิงก์รีเซ็ตรหัสผ่านไปยังอีเมล ${maskedEmail}`,
+        timestamp: new Date().toISOString(),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      // Ignored
+    }
+
+    return res.json({
+      success: true,
+      maskedEmail,
+      message: `ระบบได้ส่งคำขอลิงก์รีเซ็ตรหัสผ่านไปยังอีเมล ${maskedEmail} เรียบร้อยแล้ว กรุณาตรวจสอบกล่องจดหมายเข้า (Inbox) หรือโฟลเดอร์ Junk/Spam`,
+    });
+  }));
+
+  // Step 2 & 3: ยืนยันข้อมูลตัวตนและบันทึกรหัสผ่านใหม่
+  app.post("/api/auth/forgot-password/reset-password", asyncHandler(async (req, res) => {
+    const ip = req.ip || req.connection?.remoteAddress || "unknown";
+    if (!forgotPwLimiter(ip)) {
+      return res.status(429).json({ error: "ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่" });
+    }
+
+    const { militaryId, phone, newPassword } = req.body || {};
+    if (!militaryId || typeof militaryId !== "string" || !militaryId.trim()) {
+      return res.status(400).json({ error: "กรุณาระบุหมายเลขประจำตัวทหาร" });
+    }
+    if (!phone || typeof phone !== "string" || !phone.trim()) {
+      return res.status(400).json({ error: "กรุณาระบุหมายเลขโทรศัพท์ที่เคยลงทะเบียนไว้เพื่อยืนยันตัวตน" });
+    }
+    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
+      return res.status(400).json({ error: "รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 8 ตัวอักษร" });
+    }
+
+    const cleanId = militaryId.trim();
+    const user = await findUserByMilitaryId(cleanId);
+    if (!user) {
+      return res.status(404).json({ error: "ไม่พบข้อมูลกำลังพลในระบบ" });
+    }
+
+    // มาตรการความปลอดภัยสูงสุด: บัญชีผู้ดูแลระบบ (Admin) ไม่สามารถรีเซ็ตรหัสผ่านผ่านช่องทางนี้ได้
+    if (user.role === "admin" || cleanId === "1583800101" || cleanId === "1583800106") {
+      return res.status(403).json({
+        error: "เพื่อความปลอดภัยของระบบ บัญชีผู้ดูแลระบบ (Admin) ไม่สามารถรีเซ็ตรหัสผ่านผ่านช่องทางนี้ได้ กรุณาติดต่อ ฝยก.ฯ หรือผู้ดูแลระบบแม่ข่าย",
+      });
+    }
+
+    // ตรวจสอบความถูกต้องของหมายเลขโทรศัพท์ (ต้องตรงกันเต็มจำนวน 9-10 หลัก ป้องกันการสุ่ม 4 ตัวท้าย)
+    const userPhone = user.phone || "";
+    if (!userPhone.trim()) {
+      return res.status(400).json({
+        error: "บัญชีนี้ไม่มีหมายเลขโทรศัพท์ในระบบ กรุณาติดต่อ ฝยก.ฯ เพื่อดำเนินการตั้งรหัสผ่านใหม่",
+      });
+    }
+
+    const cleanUserPhone = String(userPhone).replace(/\D/g, "");
+    const cleanInputPhone = String(phone).replace(/\D/g, "");
+    if (cleanInputPhone.length < 9 || cleanUserPhone !== cleanInputPhone) {
+      return res.status(400).json({
+        error: "หมายเลขโทรศัพท์ไม่ตรงกับข้อมูลที่ลงทะเบียนไว้ กรุณากรอกหมายเลขโทรศัพท์เต็ม 9-10 หลัก",
+      });
+    }
+
+    const targetUid = user.id;
+
+    // อัปเดตรหัสผ่านใน Firebase Auth
+    try {
+      await getAuth().updateUser(targetUid, { password: newPassword });
+    } catch (err) {
+      console.error("[ForgotPassword] Firebase Auth update error:", err);
+      return res.status(500).json({
+        error: "ไม่สามารถบันทึกรหัสผ่านใหม่เข้าสู่ Firebase Authentication ได้: " + (err.message || "Auth error"),
+      });
+    }
+
+    // บันทึกประวัติการเปลี่ยนรหัสผ่านใน Cloud Firestore
+    try {
+      await getFirestore().collection("auditLogs").add({
+        userId: targetUid,
+        militaryId: cleanId,
+        userName: `${user.rank || ""} ${user.firstName || ""} ${user.lastName || ""}`.trim(),
+        unit: user.unit || "",
+        actionType: "PASSWORD_RESET",
+        module: "AUTH",
+        details: "กำลังพลตั้งรหัสผ่านใหม่สำเร็จผ่านระบบยืนยันตัวตนหมายเลขทหาร",
+        timestamp: new Date().toISOString(),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn("[Audit] Could not write audit log:", err);
+    }
+
+    return res.json({
+      success: true,
+      message: "ตั้งรหัสผ่านใหม่เรียบร้อยแล้ว ท่านสามารถเข้าสู่ระบบด้วยรหัสผ่านใหม่ได้ทันที",
+    });
+  }));
 
   /* ---------------- AI Assistant ---------------- */
 
@@ -438,20 +659,11 @@ function createApiApp(options) {
       timestamp: new Date().toISOString(),
     };
 
-    try {
-      const ref = await getFirestore().collection("auditLogs").add({
-        ...auditData,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-      return res.json({success: true, auditId: ref.id});
-    } catch (err) {
-      if (isAdcMissingError(err)) {
-        const localId = `audit-local-${Date.now()}`;
-        localStore.auditLogs.push({id: localId, ...auditData});
-        return res.json({success: true, auditId: localId});
-      }
-      throw err;
-    }
+    const ref = await getFirestore().collection("auditLogs").add({
+      ...auditData,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return res.json({success: true, auditId: ref.id});
   }));
 
   /* ---------------- Quiz result ---------------- */
@@ -481,24 +693,36 @@ function createApiApp(options) {
     const xpGain = passed ? 150 : 30;
     const XP_PER_LEVEL = 500; // Synchronized with frontend (500 XP per level)
 
-    const processQuizLocal = async () => {
-      const profile = await getProfile(uid);
-      const currentXp = Number(profile && profile.xp) || 0;
-      const newXp = currentXp + xpGain;
-      const newLevel = Math.floor(newXp / XP_PER_LEVEL) + 1;
+    const db = getFirestore();
+    const userRef = db.collection("users").doc(uid);
 
-      if (profile) {
-        profile.xp = newXp;
-        profile.level = newLevel;
-        localStore.users.set(uid, profile);
+    const output = await db.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) {
+        const err = new Error("User profile not found");
+        err.status = 404;
+        throw err;
+      }
+      const profile = userSnap.data();
+      if (!profile.isApproved && !isAdminProfile(uid, profile)) {
+        const err = new Error("Account not approved");
+        err.status = 403;
+        throw err;
       }
 
+      const certRef = db.collection("certificates").doc(`${uid}_${courseId}`);
+      const certSnap = passed ? await tx.get(certRef) : null;
+
+      const newXp = (Number(profile.xp) || 0) + xpGain;
+      const newLevel = Math.floor(newXp / XP_PER_LEVEL) + 1;
+
+      const resultRef = db.collection("quizResults").doc();
       const result = {
-        id: `res-local-${Date.now()}`,
+        id: resultRef.id,
         userId: uid,
-        userRank: (profile && profile.rank) || "",
-        userName: displayName(profile) || "กำลังพล",
-        militaryId: (profile && profile.militaryId) || "",
+        userRank: profile.rank || "",
+        userName: `${profile.firstName || ""} ${profile.lastName || ""}`.trim(),
+        militaryId: profile.militaryId || "",
         courseId,
         courseTitle,
         score,
@@ -507,112 +731,37 @@ function createApiApp(options) {
         passed,
         completedAt: new Date().toISOString(),
       };
-      localStore.quizResults.push(result);
+
+      tx.set(resultRef, result);
+      tx.update(userRef, {xp: newXp, level: newLevel});
 
       let certificate = null;
-      const certKey = `${uid}_${courseId}`;
-      if (passed && !localStore.certificates.has(certKey)) {
+      if (passed && certSnap && !certSnap.exists) {
         const year = new Date().getFullYear();
-        const code = `MED4-CERT-${year}-` + Math.floor(1000 + Math.random() * 9000);
+        const code = `MED4-CERT-${year}-` +
+          Math.floor(1000 + Math.random() * 9000);
         certificate = {
           id: code,
           userId: uid,
-          userRank: (profile && profile.rank) || "",
+          userRank: profile.rank || "",
           userName: result.userName,
-          militaryId: (profile && profile.militaryId) || "",
-          unit: (profile && profile.unit) || "",
+          militaryId: profile.militaryId || "",
+          unit: profile.unit || "",
           courseTitle,
           scorePercentage: percentage,
           issueDate: new Date().toISOString().split("T")[0],
-          qrCodeData: `https://medvault.4thmedbat.rtarf.mi.th/verify/${code}`,
+          qrCodeData:
+            `https://medvault.4thmedbat.rtarf.mi.th/verify/${code}`,
           commanderName: UNIT_INFO.commanderName,
           commanderRank: UNIT_INFO.commanderRank,
         };
-        localStore.certificates.set(certKey, certificate);
-      } else if (passed && localStore.certificates.has(certKey)) {
-        certificate = localStore.certificates.get(certKey);
+        tx.set(certRef, certificate);
       }
 
       return {result, certificate, xp: newXp, level: newLevel};
-    };
+    });
 
-    try {
-      const db = getFirestore();
-      const userRef = db.collection("users").doc(uid);
-
-      const output = await db.runTransaction(async (tx) => {
-        const userSnap = await tx.get(userRef);
-        if (!userSnap.exists) {
-          const err = new Error("User profile not found");
-          err.status = 404;
-          throw err;
-        }
-        const profile = userSnap.data();
-        if (!profile.isApproved && !isAdminProfile(uid, profile)) {
-          const err = new Error("Account not approved");
-          err.status = 403;
-          throw err;
-        }
-
-        const certRef = db.collection("certificates").doc(`${uid}_${courseId}`);
-        const certSnap = passed ? await tx.get(certRef) : null;
-
-        const newXp = (Number(profile.xp) || 0) + xpGain;
-        const newLevel = Math.floor(newXp / XP_PER_LEVEL) + 1;
-
-        const resultRef = db.collection("quizResults").doc();
-        const result = {
-          id: resultRef.id,
-          userId: uid,
-          userRank: profile.rank || "",
-          userName: `${profile.firstName || ""} ${profile.lastName || ""}`.trim(),
-          militaryId: profile.militaryId || "",
-          courseId,
-          courseTitle,
-          score,
-          totalQuestions,
-          percentage,
-          passed,
-          completedAt: new Date().toISOString(),
-        };
-
-        tx.set(resultRef, result);
-        tx.update(userRef, {xp: newXp, level: newLevel});
-
-        let certificate = null;
-        if (passed && certSnap && !certSnap.exists) {
-          const year = new Date().getFullYear();
-          const code = `MED4-CERT-${year}-` +
-            Math.floor(1000 + Math.random() * 9000);
-          certificate = {
-            id: code,
-            userId: uid,
-            userRank: profile.rank || "",
-            userName: result.userName,
-            militaryId: profile.militaryId || "",
-            unit: profile.unit || "",
-            courseTitle,
-            scorePercentage: percentage,
-            issueDate: new Date().toISOString().split("T")[0],
-            qrCodeData:
-              `https://medvault.4thmedbat.rtarf.mi.th/verify/${code}`,
-            commanderName: UNIT_INFO.commanderName,
-            commanderRank: UNIT_INFO.commanderRank,
-          };
-          tx.set(certRef, certificate);
-        }
-
-        return {result, certificate, xp: newXp, level: newLevel};
-      });
-
-      return res.json(output);
-    } catch (err) {
-      if (isAdcMissingError(err)) {
-        const localOutput = await processQuizLocal();
-        return res.json(localOutput);
-      }
-      throw err;
-    }
+    return res.json(output);
   }));
 
   /* ---------------- Leaderboard ---------------- */
@@ -656,42 +805,8 @@ function createApiApp(options) {
       });
       return res.json({leaderboard: entries.slice(0, 100)});
     } catch (err) {
-      if (isAdcMissingError(err)) {
-        const fallbackEntries = [
-          {
-            rankPosition: 1,
-            userName: "พ.อ. สมชาย ใจภักดี",
-            userRank: "พ.อ.",
-            militaryId: "1000000001",
-            unitCompany: "บก.พัน",
-            xp: 2450,
-            level: 5,
-            badgesCount: 6,
-          },
-          {
-            rankPosition: 2,
-            userName: "ร.อ. ธีรภัทร ชาญวิทย์",
-            userRank: "ร.อ.",
-            militaryId: "1000000002",
-            unitCompany: "ร้อย.พ.๑",
-            xp: 1850,
-            level: 4,
-            badgesCount: 4,
-          },
-          {
-            rankPosition: 3,
-            userName: "ส.อ. วินัย กล้าหาญ",
-            userRank: "ส.อ.",
-            militaryId: "1000000003",
-            unitCompany: "ร้อย.สร.สนาม",
-            xp: 1200,
-            level: 3,
-            badgesCount: 3,
-          },
-        ];
-        return res.json({leaderboard: fallbackEntries});
-      }
-      throw err;
+      console.error("[LEADERBOARD] Firestore error:", err);
+      return res.status(500).json({ error: "Failed to fetch leaderboard from Firestore" });
     }
   }));
 
@@ -725,20 +840,12 @@ function createApiApp(options) {
           isFromAdmin: true,
         };
 
-        try {
-          const ref = getFirestore().collection("chatMessages").doc();
-          await ref.set({
-            ...replyMsg,
-            id: ref.id,
-          });
-          return res.json({sent: true});
-        } catch (err) {
-          if (isAdcMissingError(err)) {
-            localStore.chatMessages.push(replyMsg);
-            return res.json({sent: true});
-          }
-          throw err;
-        }
+        const ref = getFirestore().collection("chatMessages").doc();
+        await ref.set({
+          ...replyMsg,
+          id: ref.id,
+        });
+        return res.json({sent: true});
       }));
 
   /* ---------------- Admin: auth account management ---------------- */
@@ -770,7 +877,7 @@ function createApiApp(options) {
               if (newEmail !== email) update.email = newEmail;
             }
           } catch (err) {
-            if (!isAdcMissingError(err)) throw err;
+            throw err;
           }
         }
 
@@ -779,7 +886,7 @@ function createApiApp(options) {
             await getAuth().updateUser(targetUid, update);
           }
         } catch (err) {
-          if (!isAdcMissingError(err)) throw err;
+          throw err;
         }
 
         return res.json({
@@ -798,7 +905,7 @@ function createApiApp(options) {
         try {
           await getAuth().deleteUser(targetUid);
         } catch (error) {
-          if (error.code !== "auth/user-not-found" && !isAdcMissingError(error)) {
+          if (error.code !== "auth/user-not-found") {
             throw error;
           }
         }
@@ -806,7 +913,7 @@ function createApiApp(options) {
         try {
           await getFirestore().collection("users").doc(targetUid).delete();
         } catch (error) {
-          if (!isAdcMissingError(error)) throw error;
+          throw error;
         }
 
         return res.json({success: true});

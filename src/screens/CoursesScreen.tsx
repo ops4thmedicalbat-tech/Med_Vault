@@ -15,6 +15,7 @@ import {
   Download,
   Eye,
   Building2,
+  FolderDown,
 } from "lucide-react";
 import { SlideViewerModal } from "../components/SlideViewerModal";
 
@@ -251,6 +252,49 @@ export const CoursesScreen: React.FC<CoursesScreenProps> = ({
                 <div className="prose prose-stone max-w-none text-xs sm:text-sm text-stone-800 leading-relaxed whitespace-pre-line bg-stone-50 p-4 rounded-xl border border-stone-200">
                   {activeLesson.contentMarkdown}
                 </div>
+
+                {/* Downloadable Attached Course Materials */}
+                {selectedCourse.attachedFiles && selectedCourse.attachedFiles.length > 0 && (
+                  <div className="mt-6 p-4 bg-amber-50/80 rounded-xl border border-amber-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-[#2D3A1B] flex items-center gap-1.5">
+                        <FolderDown className="w-4 h-4 text-amber-700" />
+                        <span>เอกสารและคู่มือประจำวิชา (ไฟล์ต้นฉบับดาวน์โหลด)</span>
+                      </h4>
+                      <span className="text-[10px] text-amber-900 bg-amber-200 font-bold px-2 py-0.5 rounded-full">
+                        {selectedCourse.attachedFiles.length} ไฟล์
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedCourse.attachedFiles.map((file) => (
+                        <a
+                          key={file.id}
+                          href={file.fileUrl}
+                          download={file.fileName}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-3 bg-white hover:bg-amber-100/50 rounded-lg border border-amber-300 shadow-xs group transition-all"
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            <span className="px-2 py-0.5 bg-[#2D3A1B] text-amber-200 text-[10px] font-black rounded uppercase shrink-0">
+                              {file.fileType}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-stone-900 truncate group-hover:text-[#2D3A1B]">
+                                {file.fileName}
+                              </p>
+                              <p className="text-[10px] text-stone-500 truncate">
+                                {file.description} • {file.sizeMb} MB
+                              </p>
+                            </div>
+                          </div>
+                          <Download className="w-4 h-4 text-amber-700 shrink-0 ml-2 group-hover:translate-y-0.5 transition-transform" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-xs text-stone-500">เลือกบทเรียนทางซ้ายเพื่อเริ่มอ่าน</p>
@@ -349,6 +393,14 @@ export const CoursesScreen: React.FC<CoursesScreenProps> = ({
                     <span>สไลด์</span>
                   </button>
                 </div>
+
+                {/* Attached Files Badge */}
+                {c.attachedFiles && c.attachedFiles.length > 0 && (
+                  <div className="flex items-center space-x-1.5 text-[10px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-md">
+                    <FolderDown className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span className="truncate">มีเอกสารแนบ {c.attachedFiles.length} ไฟล์ ({c.attachedFiles.map((f) => f.fileName).join(", ")})</span>
+                  </div>
+                )}
 
                 {/* Tags */}
                 <div className="flex flex-wrap gap-1 pt-1">

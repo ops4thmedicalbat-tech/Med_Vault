@@ -324,6 +324,32 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({
         </p>
       </div>
 
+      {/* Admin Mode Banner: Shortcut to Personnel Score Matrix */}
+      {currentUser.role === "admin" && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <span className="p-2 bg-amber-400 text-stone-950 font-black text-xs rounded-lg uppercase shrink-0">
+              ADMIN
+            </span>
+            <div>
+              <h4 className="text-xs font-bold text-amber-950">
+                โหมดผู้ดูแลระบบ: ตรวจสอบและติดตามคะแนนสอบของกำลังพล
+              </h4>
+              <p className="text-[11px] text-amber-800">
+                ท่านสามารถตรวจสอบผลการทดสอบครบทั้ง 17 วิชาบังคับของกำลังพลทุกนาย หรือสั่งพิมพ์รายงานคะแนน 1 หน้ากระดาษ
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigateTab("admin")}
+            className="px-4 py-2 bg-[#2D3A1B] hover:bg-[#1E2812] text-amber-200 font-extrabold text-xs rounded-lg flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 shrink-0"
+          >
+            <FileCheck className="w-4 h-4 text-amber-300" />
+            <span>เปิดตารางสรุปคะแนน 17 วิชา</span>
+          </button>
+        </div>
+      )}
+
       {/* Course Selection View */}
       {!selectedCourseId ? (
         <div className="space-y-4">

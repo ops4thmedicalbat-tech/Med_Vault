@@ -1,6 +1,7 @@
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithPopup,
   signOut,
   onAuthStateChanged,
@@ -40,6 +41,8 @@ export interface AppUser {
   position: string;
 
   phone: string;
+
+  recoveryEmail?: string;
 
   role: UserRole;
 
@@ -262,4 +265,18 @@ export const onAuthChanged = (
 
 export const getCurrentFirebaseUser = () => {
   return auth.currentUser;
+};
+
+/* =========================================================
+   PASSWORD RESET VIA EMAIL
+   ========================================================= */
+
+export const sendResetPasswordEmail = async (email: string) => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return { success: true };
+  } catch (error) {
+    console.error("[MedVault] Error sending password reset email:", error);
+    throw error;
+  }
 };

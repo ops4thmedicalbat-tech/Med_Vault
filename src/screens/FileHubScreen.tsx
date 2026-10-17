@@ -47,6 +47,24 @@ export const FileHubScreen: React.FC<FileHubScreenProps> = ({ documents, onLogAc
   };
 
   const handleDownloadDoc = async (doc: DocumentFile, format: "pptx" | "pdf" = "pptx") => {
+    if (doc.downloadUrl) {
+      if (onLogActivity) {
+        onLogActivity(
+          "DOWNLOAD_FILE",
+          "คลังคู่มือ/ไฟล์",
+          `ดาวน์โหลดเอกสารต้นฉบับ: ${doc.title}`
+        );
+      }
+      const link = document.createElement("a");
+      link.href = doc.downloadUrl;
+      link.setAttribute("download", doc.title);
+      link.setAttribute("target", "_blank");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     if (onLogActivity) {
       onLogActivity(
         "DOWNLOAD_FILE",
@@ -209,13 +227,25 @@ export const FileHubScreen: React.FC<FileHubScreenProps> = ({ documents, onLogAc
 
             {/* Actions Bar */}
             <div className="pt-3 border-t border-stone-200 flex items-center justify-between gap-2 text-xs flex-wrap">
-              <button
-                onClick={() => handlePreviewDocSlide(doc)}
-                className="flex items-center space-x-1 py-1.5 px-2.5 bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold rounded-lg transition-colors shadow-xs"
-              >
-                <Eye className="w-3.5 h-3.5 text-stone-950" />
-                <span>เปิดดูสไลด์</span>
-              </button>
+              {doc.downloadUrl && doc.fileType === "pdf" ? (
+                <a
+                  href={doc.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 py-1.5 px-2.5 bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold rounded-lg transition-colors shadow-xs"
+                >
+                  <Eye className="w-3.5 h-3.5 text-stone-950" />
+                  <span>เปิดอ่านเอกสาร</span>
+                </a>
+              ) : (
+                <button
+                  onClick={() => handlePreviewDocSlide(doc)}
+                  className="flex items-center space-x-1 py-1.5 px-2.5 bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold rounded-lg transition-colors shadow-xs"
+                >
+                  <Eye className="w-3.5 h-3.5 text-stone-950" />
+                  <span>เปิดดูสไลด์</span>
+                </button>
+              )}
 
               <div className="flex items-center space-x-1.5 flex-wrap">
                 <button
@@ -231,23 +261,39 @@ export const FileHubScreen: React.FC<FileHubScreenProps> = ({ documents, onLogAc
                   <span>{doc.isOfflineSaved ? "Offline" : "บันทึก Offline"}</span>
                 </button>
 
-                <button
-                  onClick={() => handleDownloadDoc(doc, "pptx")}
-                  className="flex items-center space-x-1 py-1.5 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold rounded-lg transition-colors text-[10px]"
-                  title="ดาวน์โหลดไฟล์ PowerPoint (.pptx)"
-                >
-                  <Presentation className="w-3 h-3 text-amber-900" />
-                  <span>PPTX</span>
-                </button>
+                {doc.downloadUrl ? (
+                  <a
+                    href={doc.downloadUrl}
+                    download={doc.title}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center space-x-1 py-1.5 px-2.5 bg-[#3B4823] hover:bg-[#4B5320] text-amber-200 font-bold rounded-lg transition-colors text-[10px] shadow-xs"
+                    title={`ดาวน์โหลดไฟล์ต้นฉบับ (${doc.fileType.toUpperCase()})`}
+                  >
+                    <Download className="w-3 h-3 text-amber-300" />
+                    <span>ดาวน์โหลดไฟล์ ({doc.fileType.toUpperCase()})</span>
+                  </a>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleDownloadDoc(doc, "pptx")}
+                      className="flex items-center space-x-1 py-1.5 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold rounded-lg transition-colors text-[10px]"
+                      title="ดาวน์โหลดไฟล์ PowerPoint (.pptx)"
+                    >
+                      <Presentation className="w-3 h-3 text-amber-900" />
+                      <span>PPTX</span>
+                    </button>
 
-                <button
-                  onClick={() => handleDownloadDoc(doc, "pdf")}
-                  className="flex items-center space-x-1 py-1.5 px-2.5 bg-[#3B4823] hover:bg-[#4B5320] text-amber-200 font-bold rounded-lg transition-colors text-[10px]"
-                  title="ดาวน์โหลดไฟล์ PDF (.pdf)"
-                >
-                  <Download className="w-3 h-3" />
-                  <span>PDF</span>
-                </button>
+                    <button
+                      onClick={() => handleDownloadDoc(doc, "pdf")}
+                      className="flex items-center space-x-1 py-1.5 px-2.5 bg-[#3B4823] hover:bg-[#4B5320] text-amber-200 font-bold rounded-lg transition-colors text-[10px]"
+                      title="ดาวน์โหลดไฟล์ PDF (.pdf)"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>PDF</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

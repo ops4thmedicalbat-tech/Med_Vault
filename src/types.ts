@@ -21,6 +21,7 @@ export interface User {
   militaryId: string; // Username (digits)
   position: string; // e.g. เสนารักษ์, นายสิบเวร, พลขับรถ
   phone: string; // 10 digits
+  recoveryEmail?: string; // อีเมลสำหรับกู้คืนรหัสผ่าน
   role: "admin" | "user";
   isApproved: boolean; // ต้องได้รับการอนุมัติจากแอดมินก่อนใช้งาน
   unit: string;
@@ -44,6 +45,15 @@ export interface CourseSlideAttachment {
   slidesContentSummary?: string[]; // Bullet topics for interactive slide previewer
 }
 
+export interface CourseAttachedFile {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: "pdf" | "doc" | "docx" | "ppt";
+  sizeMb: number;
+  description: string;
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -58,6 +68,7 @@ export interface Course {
   mandatory: boolean;
   tags: string[];
   slidesAttachments?: CourseSlideAttachment[];
+  attachedFiles?: CourseAttachedFile[];
 }
 
 export interface Lesson {
@@ -150,6 +161,7 @@ export interface DocumentFile {
   slidePagesCount?: number;
   slidesUrl?: string;
   slidesContentSummary?: string[];
+  downloadUrl?: string;
 }
 
 export interface UnitSchoolItem {
