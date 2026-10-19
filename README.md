@@ -39,11 +39,6 @@ firebase deploy --only firestore:rules,storage,functions,hosting
 
 > Cloud Functions ต้องใช้ Firebase แพ็กเกจ Blaze
 
-## การสร้าง/รีเซ็ตบัญชีแอดมิน
-
-```bash
-ADMIN_PASSWORD='รหัสผ่านใหม่อย่างน้อย8ตัว' node scratch/createAdmin.cjs
-```
 
 ## ข้อควรระวังด้านความปลอดภัย
 
